@@ -1,0 +1,1 @@
+copy r:\main.exe _sprite.exe

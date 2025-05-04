@@ -11,6 +11,30 @@ If you want to recompile it with WatcomC++. Also depack _build.zip in this folde
 
 There is an example config.sys and autoexec.bat in _build.zip supplied.
 
+### Sprite FileFormat
+BYTE 'S','P',Width,Height
+
+DWORDARRAY[Width*Height] rgbaPixelData
+
+### SpriteSheet FileFormat
+BYTE 'S','S'
+
+SHORT spriteCount
+
+BYTEARRAY[10] Name
+
+BYTE 'S','P',Width,Height
+
+DWORDARRAY[Width*Height] rgbaPixelData
+
+BYTEARRAY[10] Name
+
+BYTE 'S','P',Width,Height
+
+DWORDARRAY[Width*Height] rgbaPixelData
+
+...
+
 ## You can create a bootable USB-Stick with FreeDos with Rufus
 
 https://rufus.ie

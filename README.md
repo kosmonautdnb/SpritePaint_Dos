@@ -5,6 +5,8 @@ A basic sprite paint program for Dos written in WatcomC++.
 
 try: _sprite.exe it's the compiled program.
 
+A video of using this tool: https://www.youtube.com/watch?v=1TvwSr7-zCg
+
 I hope your computer supports Vesa 640x480x32.
 
 If you want to recompile it with WatcomC++. Also depack _build.zip in this folder and place the ramdisk in your autoexec.bat.

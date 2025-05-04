@@ -13,7 +13,7 @@ There is an example config.sys and autoexec.bat in _build.zip supplied.
 
 ## You can create a bootable USB-Stick with FreeDos with Rufus
 
-https://rufus.ie/de/
+https://rufus.ie
 
 FAT32 max 32GB, FreeDos. The MS-Dos Systemfiles are hidden in Windows but the Autoexec.bat etc. are written to the stick.
 

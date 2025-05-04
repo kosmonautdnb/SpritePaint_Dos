@@ -5,6 +5,14 @@ A basic sprite paint program for Dos written in WatcomC++.
 
 try _sprite.exe
 
+## You can create a bootable USB-Stick with FreeDos with Rufus
+
+https://rufus.ie/de/
+
+FAT32 max 32GB, FreeDos. The MS-Dos Systemfiles are hidden in Windows but the Autoexec.bat etc. are written to the stick.
+
+You have to disable secure boot and enable Legacy or CSM booting.
+
 ## You may need this change to your config.sys
 
 DEVICE=C:_DOS_\BIN\HIMEMX.exe

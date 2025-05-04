@@ -306,6 +306,7 @@ enum {
   LoadSave_ImportPalette = 9,
   LoadSave_ExportPalette = 10,
   LoadSave_ImportSpriteAtlas = 11,
+  LoadSave_ExportSprites = 12,
 };
 
 int loadSave = LoadSave_None;
@@ -457,6 +458,7 @@ unsigned int modalMode = MODAL_NONE;
 #define TOOL_COPY 7
 #define TOOL_SCALE 8
 #define TOOL_ROTATE 9
+#define TOOL_RECOLOR 10
 
 class Tool {
 public:
@@ -468,6 +470,8 @@ public:
   float mouseSpeed;
   bool filled;
   int tool;
+  unsigned int color0;
+  unsigned int color1;
   Tool() {
     size = 1.f;
     angle = 0.f;
@@ -480,6 +484,8 @@ public:
     mouseSpeed = 1.f;
     tool = TOOL_PENCIL;
     filled = true;
+    color0 = 0xff000000;
+    color1 = 0xff000000;
   }
   char *getName() {
     switch(tool) {
@@ -492,6 +498,7 @@ public:
     case TOOL_COPY: return "Copy";
     case TOOL_SCALE: return "Scale";
     case TOOL_ROTATE: return "Transform";
+    case TOOL_RECOLOR: return "ReColor";
     };
     return "<NONE>";
   }
@@ -1045,6 +1052,7 @@ void displayMenuBar() {
       }
       if (ImGui::BeginMenu("Sprites")) {
         if (ImGui::MenuItem("Import sprite atlas [png]")) loadSave = LoadSave_ImportSpriteAtlas;
+        if (ImGui::MenuItem("Export sprite sheet [png]")) loadSave = LoadSave_ExportSprites;
         ImGui::Separator();
         if (ImGui::MenuItem("Quantize colors of all sprites")) quantizeAll();
         ImGui::Separator();
@@ -1997,6 +2005,7 @@ void handleTool(int mx, int my) {
   case TOOL_COPY: handleToolCopy(mx,my); break;
   case TOOL_SCALE: handleToolScale(mx,my); break;
   case TOOL_ROTATE: handleToolRotate(mx,my); break;
+  case TOOL_RECOLOR:   handleColorGet(mx,my); break;
   }
   toolWas = getCurrentTool().tool;
   mouseButtonsWas = mouseButtons;
@@ -2401,6 +2410,63 @@ RGBAImage loadMyFormats(const char *fileName) {
   return r;
 }
 
+void exportSprites(const char *fileName) {
+  String fName = String(fileName);
+  if (fName.find(".")<0) fName += ".png";
+
+  int currentWidth = 0;
+  int currentHeight = 0;
+  {for(int i = 0; i < sprites.size(); i++) {
+    currentWidth += sprites[i].width;
+    if (currentWidth > 1024) {currentWidth = 1024; break;}
+  }}
+
+  int currentX = 0;
+  int currentY = 0;
+  int lastMaxHeight = 0;
+  int lastLineY = 0;
+  {for(int i = 0; i < sprites.size(); i++) {
+    currentX += sprites[i].width;
+    if (sprites[i].height>lastMaxHeight) lastMaxHeight = sprites[i].height;
+    if (currentX > 1024) {
+      currentX = sprites[i].width;
+      currentY += lastMaxHeight;
+      lastLineY = currentY;
+      lastMaxHeight = sprites[i].height;
+    }
+  }}
+  currentHeight = lastLineY + lastMaxHeight;
+  unsigned int *data = new unsigned int[currentWidth*currentHeight];
+  RGBAImage img(currentWidth,currentHeight,data);
+  memset(data,0,currentWidth*currentHeight*4);
+
+  currentX = 0;
+  currentY = 0;
+  lastMaxHeight = 0;
+  {for(int i = 0; i < sprites.size(); i++) {
+    int paintCurrentX = currentX;
+    currentX += sprites[i].width;
+    if (sprites[i].height>lastMaxHeight) lastMaxHeight = sprites[i].height;
+    if (currentX > 1024) {
+      paintCurrentX = 0;
+      currentX = sprites[i].width;
+      currentY += lastMaxHeight;
+      lastMaxHeight = sprites[i].height;
+    }
+    for (int y = 0; y < sprites[i].height; y++) {
+      for (int x = 0; x < sprites[i].width; x++) {
+        int dx = x + paintCurrentX;
+        int dy = y + currentY;
+        if (dx>=0&&dx<currentWidth&&dy>=0&&dy<currentHeight) {
+          data[dx+dy*currentWidth]=sprites[i].bitmap[x+y*MAXSPRITEWIDTH];
+        }
+      }
+    }
+  }}
+  img.savePNG(fName.c_str());
+  delete[] data;
+}
+
 unsigned int previewPictureId=0;
 int previewPictureWidth=1;
 int previewPictureHeight=1;
@@ -2434,6 +2500,7 @@ void displayLoadSave() {
 
   bool isLoading = true;
   switch(loadSave) {
+  case LoadSave_ExportSprites:
   case LoadSave_ExportPalette:
   case LoadSave_ExportSprite:
   case LoadSave_SaveSprite:
@@ -2505,6 +2572,7 @@ void displayLoadSave() {
     case LoadSave_ImportPalette: {importPalette(fname.c_str());} break;
     case LoadSave_ExportPalette: {exportPalette(fname.c_str());} break;
     case LoadSave_ImportSpriteAtlas: {importSpriteAtlas(fname.c_str());} break;
+    case LoadSave_ExportSprites: {exportSprites(fname.c_str());} break;
     }
   }
 
@@ -2578,13 +2646,49 @@ void displayToolWindow() {
       getCurrentTool().w = clamp(getCurrentTool().w,0.001f,128.f);
     }
   }
-  if (getCurrentTool().tool == TOOL_RECT) {ImGui::Checkbox("Filled##Filled1",&getCurrentTool().filled);}
-  if (getCurrentTool().tool == TOOL_CIRCLE) {ImGui::Checkbox("Filled##Filled2",&getCurrentTool().filled);}
-  if (getCurrentTool().tool == TOOL_MOVE) {if (ImGui::Button("FlipX##FlipX1")||currentKey=='x') flipClipBoardX();  ImGui::SameLine(); if (ImGui::Button("FlipY##FlipY1")||currentKey=='y') flipClipBoardY();}
-  if (getCurrentTool().tool == TOOL_COPY) {if (ImGui::Button("FlipX##FlipX2")||currentKey=='x') flipClipBoardX();  ImGui::SameLine(); if (ImGui::Button("FlipY##FlipY2")||currentKey=='y') flipClipBoardY();}
+  if (t == TOOL_RECT) {ImGui::Checkbox("Filled##Filled1",&getCurrentTool().filled);}
+  if (t == TOOL_CIRCLE) {ImGui::Checkbox("Filled##Filled2",&getCurrentTool().filled);}
+  if (t == TOOL_MOVE) {if (ImGui::Button("FlipX##FlipX1")||currentKey=='x') flipClipBoardX();  ImGui::SameLine(); if (ImGui::Button("FlipY##FlipY1")||currentKey=='y') flipClipBoardY();}
+  if (t == TOOL_COPY) {if (ImGui::Button("FlipX##FlipX2")||currentKey=='x') flipClipBoardX();  ImGui::SameLine(); if (ImGui::Button("FlipY##FlipY2")||currentKey=='y') flipClipBoardY();}
+  if (t == TOOL_RECOLOR) {
+    if (ImGui::Button("Colorize")) {
+      for (int y = 0; y < getCurrentSprite().height; y++) {
+        for (int x = 0; x < getCurrentSprite().width; x++) { 
+          unsigned int c = getCurrentSprite().bitmap[x+y*MAXSPRITEWIDTH];
+          if (c == getCurrentTool().color0)
+            getCurrentSprite().bitmap[x+y*MAXSPRITEWIDTH] = getCurrentTool().color1;
+        }
+      }
+    }
+    ImDrawList *l = ImGui::GetWindowDrawList();
+    ImVec2 cp0 = ImGui::GetCursorScreenPos();
+    ImVec2 b10 = cp0;
+    b10.x += 4;
+    b10.y += 14;
+    ImVec2 b11 = b10;
+    b11.x += 30;
+    b11.y += 20;
+
+    ImVec2 b20 = b10;
+    b20.x += 35;
+    ImVec2 b21 = b20;
+    b21.x += 30;
+    b21.y += 20;
+    ImGui::Text("Source/Dest");    
+    l->AddRectFilled(b10,b11,getCurrentTool().color0);
+    l->AddRect(b10,b11,0xffffffff);
+    l->AddRectFilled(b20,b21,getCurrentTool().color1);
+    l->AddRect(b20,b21,0xffffffff);
+    if (ImGui::IsMouseHoveringRect(b10,b11) && (mouseButtons & 1)) {
+      getCurrentTool().color0 = getCurrentPalette().slotColors[getCurrentPalette().slot];
+    }
+    if (ImGui::IsMouseHoveringRect(b20,b21) && (mouseButtons & 1)) {
+      getCurrentTool().color1 = getCurrentPalette().slotColors[getCurrentPalette().slot];
+    }
+  }
   mouseSpeed = getCurrentTool().mouseSpeed;
   ImGui::PopItemWidth();
-  ImGui::SetCursorPosY(128);
+  ImGui::SetCursorPosY(118);
   ImGui::Separator();
   if (!getCurrentTool().special) {
     buttonActive(TOOL_PENCIL); if (ImGui::Button("Pencil")) getCurrentTool().tool = TOOL_PENCIL; buttonActiveEnd();
@@ -2596,6 +2700,8 @@ void displayToolWindow() {
     buttonActive(TOOL_COPY); if (ImGui::Button("Copy")) getCurrentTool().tool = TOOL_COPY; buttonActiveEnd();
     buttonActive(TOOL_SCALE); if (ImGui::Button("Scale")) getCurrentTool().tool = TOOL_SCALE; buttonActiveEnd();
     buttonActive(TOOL_ROTATE); if (ImGui::Button("Transform")) {Tool &t = getCurrentTool(); t.tool = TOOL_ROTATE;t.angle=0.f;t.place=false;t.special=false;t.x=0;t.y=0;t.w=1;t.h=1;} buttonActiveEnd();
+    ImGui::SameLine();
+    buttonActive(TOOL_RECOLOR); if (ImGui::Button("Recolor")) {Tool &t = getCurrentTool(); t.tool = TOOL_RECOLOR; t.color0 = getCurrentPalette().slotColors[getCurrentPalette().slot]; t.color1 = getCurrentPalette().slotColors[getCurrentPalette().slot];} buttonActiveEnd();
   }
   ImGui::End();
 }
@@ -2996,7 +3102,10 @@ void displayCopySprites() {
 
 
 int main(int argc, char **argv) {
-  glVesa(XRES,YRES,32);
+  if (!glVesa(XRES,YRES,32)) {
+    printf("No Vesa Mode 640x480 with 32Bit found.\n");
+    exit(0);
+  }
   InitImGui(XRES, YRES);
   newWorkSpace();
 

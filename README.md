@@ -5,6 +5,10 @@ A basic sprite paint program for Dos written in WatcomC++.
 
 try _sprite.exe
 
+If you want to recompile it with WatcomC++. Also depack _build.zip in this folder and place the ramdisk in your autoexec.bat.
+
+There is an example config.sys and autoexec.bat in _build.zip supplied.
+
 ## You can create a bootable USB-Stick with FreeDos with Rufus
 
 https://rufus.ie/de/

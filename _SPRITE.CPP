@@ -518,35 +518,51 @@ public:
   }
 };
 
-Animation animation;
-
-Animation &getCurrentAnimation() {return animation;}
+class TestBox {
+public:
+  int width,height;
+  Array<unsigned int> spriteIndices;
+  TestBox() {
+    width = 2;
+    height = 2;
+    spriteIndices.resize(width*height);
+    for (int i = 0; i < spriteIndices.size(); i++) spriteIndices[i] = 0;
+  }
+};
 
 Array<Sprite> sprites;
 SpriteCanvas spriteCanvas;
 Palette palette;
 Tool tool;
 SpriteSheet spriteSheet;
+Animation animation;
+TestBox testBox;
 
 Array<Sprite> sprites_undo;
 SpriteCanvas spriteCanvas_undo;
 Palette palette_undo;
 Tool tool_undo;
+Animation animation_undo;
+TestBox testBox_undo;
 
 void makeUndoPoint() {
   sprites_undo = sprites;
   spriteCanvas_undo = spriteCanvas;
   palette_undo = palette;
   tool_undo = tool;
+  animation_undo = animation;
+  testBox_undo = testBox;
 }
-
 
 void undo() {
   sprites = sprites_undo;
   spriteCanvas = spriteCanvas_undo;
   palette = palette_undo;
   tool = tool_undo;
+  animation = animation_undo;
+  testBox = testBox_undo;
   for (int i = 0; i < sprites.size(); i++) sprites[i].update();
+  palette.update();
 }
 
 int makeScreenShot = 0;
@@ -572,6 +588,9 @@ void render() {
     }
   }
 }
+
+Animation &getCurrentAnimation() {return animation;}
+TestBox &getCurrentTestBox() {return testBox;}
 
 SpriteSheet &getCurrentSpriteSheet() {
   return spriteSheet;
@@ -694,6 +713,7 @@ bool importSprite(const char *fileName) {
   getCurrentSprite().update();
   getCurrentSprite().texture();
   getCurrentTool().tool = TOOL_NONE;
+  delete[] img.data;
   return true;
 }
 
@@ -729,6 +749,7 @@ bool importPalette(const char *fileName) {
     if (index >= MAXPALETTECOLORS)
       break;
   }
+  delete[] img.data;
   getCurrentPalette().update();
   return true;
 }
@@ -753,6 +774,7 @@ bool exportPalette(const char *fileName) {
     }
   }
   img.savePNG(fName.c_str());
+  delete[] img.data;
   return true;
 }
 
@@ -882,6 +904,7 @@ void newWorkSpace() {
   getCurrentPalette() = Palette();
   getCurrentSpriteSheet() = SpriteSheet();
   getCurrentAnimation() = Animation();
+  getCurrentTestBox() = TestBox();
   makeUndoPoint();
 }
 
@@ -2297,6 +2320,7 @@ bool importSpriteAtlas(const char *fileName) {
     glRefresh();
   } while(!finished);
 
+  delete[] img.data;
   glDeleteTextures(1, &textureId);
   currentKey = 0;
 
@@ -2304,6 +2328,31 @@ bool importSpriteAtlas(const char *fileName) {
 }
 
 HashMap<int,String> currentPaths;
+
+
+unsigned int previewPictureId=0;
+int previewPictureWidth=1;
+int previewPictureHeight=1;
+void loadPreviewPicture(const char *fileName) {
+  if (previewPictureId!=0) {
+    glDeleteTextures(1,&previewPictureId);
+    previewPictureId=0;
+  }
+  if (fileName == NULL) return;
+  RGBAImage img = RGBAImage::fromFile(fileName);
+  if (img.data == NULL) return;
+  glGenTextures(1, &previewPictureId);
+  glBindTexture(GL_TEXTURE_2D, previewPictureId);
+  glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,img.width,img.height,0,GL_RGBA,GL_UNSIGNED_BYTE,img.data);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+  previewPictureWidth=img.width;
+  previewPictureHeight=img.height;
+
+  delete[] img.data;
+}
 
 void displayLoadSave() {
   if (loadSave == LoadSave_None)
@@ -2319,23 +2368,51 @@ void displayLoadSave() {
   }
 
   FileDialog *f = new FileDialog();
-  f->open(isLoading);
+  f->open(isLoading,"*.*\0\0",loadPreviewPicture);
   if (currentPaths.has(loadSave))
     f->setCurrentPath(currentPaths[loadSave]);
 
   bool finished;
   bool first = true;
+  bool first2 = true;
+  float zoom4 = 1.f;
+
+  ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(0,0,0,1.0));
+
   do
   {
     ImGuiNewFrame();
-    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+      
+    if (previewPictureId != 0) {
+      ImVec2 cv2 = ImVec2(previewPictureWidth,previewPictureHeight);
+      cv2.x *= zoom4;
+      cv2.y *= zoom4/getCurrentSpriteCanvas().aspect;
+      ImVec2 cv1 = cv2;
+      cv2.x += 64;
+      cv2.y += 64;
+      ImGui::SetNextWindowSize(cv2);
+      if (first2) ImGui::SetNextWindowPos(ImVec2(0,0));
+      first2=false;
+      ImGui::Begin(("Preview "+String(previewPictureWidth)+"x"+String(previewPictureHeight)+"##Preview44").c_str());
+      ImGui::PushItemWidth(64);
+      ImGui::InputFloat("Zoom##Zoom4",&zoom4,0.5);
+      ImGui::PopItemWidth();
+      zoom4 = clamp(zoom4,0.1f,32.f);
+      ImGui::Image((void*)previewPictureId,cv1);
+      ImGui::End();
+    }
+
+    if (first) ImGui::SetNextWindowPos(ImVec2(20,20));
     first = false;
+    ImGui::SetNextWindowFocus();
     finished = f->display();
 
     render();
 
     glRefresh();
   } while(!finished);
+
+  ImGui::PopStyleColor();
   
   currentKey = 0;
   currentPaths[loadSave] = f->getCurrentPath();
@@ -2358,6 +2435,8 @@ void displayLoadSave() {
   }
 
   loadSave = LoadSave_None;
+  loadPreviewPicture(NULL);
+  delete f;
 }
 
 void buttonActive(int toolType) {
@@ -2649,6 +2728,40 @@ void displayAnimation() {
   ImGui::End();
 }
 
+void displayTestBox() {
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(565,320)); isInit = false;
+  ImGui::Begin("TestBox", NULL, ImVec2(75,85),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoTitleBar);
+  int width = 50;
+  int height = width/getCurrentSpriteCanvas().aspect;
+  ImVec2 cv = ImVec2(width/getCurrentTestBox().width,height/getCurrentTestBox().height);
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
+  int over=-1;
+  for (int y = 0; y < getCurrentTestBox().height; y++) {
+    for (int x = 0; x < getCurrentTestBox().width; x++) {
+      if (x != 0) ImGui::SameLine();
+      int spriteNr = clamp((int)getCurrentTestBox().spriteIndices[x+y*getCurrentTestBox().width],0,(int)sprites.size()-1);
+      ImVec2 c2 = ImVec2((double)sprites[spriteNr].width/MAXSPRITEWIDTH,(double)sprites[spriteNr].height/MAXSPRITEHEIGHT);
+      ImVec2 sp0 = ImGui::GetCursorScreenPos();
+      ImVec2 sp1 = sp0;
+      sp1.x += cv.x;
+      sp1.y += cv.y;
+      ImGui::Image((void*)sprites[spriteNr].textureId,cv,ImVec2(0,0),c2);
+      if (ImGui::IsMouseHoveringRect(sp0,sp1)) {
+        over = spriteNr;
+        ImDrawList *l = ImGui::GetWindowDrawList();
+        l->AddRect(sp0,sp1,0xff0000ff,0);
+        if (mouseButtons & 1) {
+          getCurrentTestBox().spriteIndices[x+y*getCurrentTestBox().width]=getCurrentSpriteCanvas().spriteNr;
+        }
+      }
+    }
+  }
+  if (over>=0)
+   ImGui::Text("Sprite:%d",over);
+  ImGui::PopStyleVar();
+  ImGui::End();
+}
+
 void displayResizeSprite() {
   bool finished = false;
   bool first = true;
@@ -2705,6 +2818,8 @@ int main(int argc, char **argv) {
   glVesa(XRES,YRES,32);
   InitImGui(XRES, YRES);
   newWorkSpace();
+
+  //ImGui::GetStyle().WindowRounding = 0.f;
   
   do
   {
@@ -2734,6 +2849,7 @@ int main(int argc, char **argv) {
     displayColorPicker();
     displayColorWheel();
     displayAnimation();
+    displayTestBox();
     displaySpriteSheet();
     displayMenuBar();
     displayLoadSave();

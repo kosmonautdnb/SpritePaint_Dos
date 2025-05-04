@@ -442,6 +442,8 @@ public:
 
 #define MODAL_NONE 0
 #define MODAL_RESIZESPRITE 1
+#define MODAL_COPYSPRITES 2
+#define MODAL_DELETESPRITES 3
 unsigned int modalMode = MODAL_NONE;
 
 
@@ -1049,10 +1051,13 @@ void displayMenuBar() {
         bool &db = getCurrentSpriteCanvas().doublePixel;
         if (db && ImGui::MenuItem("Double pixels off##DoublePixelsOnOff")) {
           db = !db;
-        } else
+        } else                                                                
         if ((!db) && ImGui::MenuItem("Double pixels on##DoublePixelsOnOff")) {
           db = !db;
         }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Delete sprites")) modalMode=MODAL_DELETESPRITES;
+        if (ImGui::MenuItem("Copy sprites")) modalMode=MODAL_COPYSPRITES;
         ImGui::EndMenu();
       }
       ImGui::Text("\t\t\t\t\t\t\t\t\t\t%s  FPS/%d",currentTimeString().c_str(),(int)fps);
@@ -2865,8 +2870,10 @@ void displayResizeSprite() {
     first = false;
     ImGui::Begin("New Size##NewSize11");
     ImGui::Text("Old Size:%dx%d",getCurrentSprite().width,getCurrentSprite().height);
-    ImGui::InputInt("Width", &newSizeX);
-    ImGui::InputInt("Height", &newSizeY);
+    ImGui::PushItemWidth(64);
+    ImGui::InputInt("Width", &newSizeX,0);
+    ImGui::InputInt("Height", &newSizeY,0);
+    ImGui::PopItemWidth();
     newSizeX = clamp(newSizeX,1,MAXSPRITEWIDTH);
     newSizeY = clamp(newSizeY,1,MAXSPRITEHEIGHT);
     if (ImGui::Button("Cancel##Cancel11")) {
@@ -2893,6 +2900,89 @@ void displayResizeSprite() {
         getCurrentSprite().height = newSizeY;
         getCurrentSprite().update();
         getCurrentSprite().texture();
+      }
+      finished = true;
+    }             
+    ImGui::End();
+    render();
+  
+    glRefresh();
+  } while(!finished);
+  modalMode = MODAL_NONE;
+}
+
+void displayDeleteSprites() {
+  bool finished = false;
+  bool first = true;
+  int deleteStartSprite = 0;
+  int deleteEndSprite = 0;
+  do
+  {
+    ImGuiNewFrame();
+    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    first = false;
+    ImGui::Begin("Delete Sprites##DeleteSprites22");
+    ImGui::PushItemWidth(64);
+    ImGui::InputInt("Sprite0##Sprite022", &deleteStartSprite,0);
+    ImGui::InputInt("SpriteN##SpriteN22", &deleteEndSprite,0);
+    ImGui::PopItemWidth();
+    deleteStartSprite = clamp(deleteStartSprite,0,(int)sprites.size()-1);
+    deleteEndSprite = clamp(deleteEndSprite,deleteStartSprite,(int)sprites.size()-1);
+    if (ImGui::Button("Cancel##Cancel22")) {
+      finished = true;
+    }             
+    ImGui::SameLine();
+    if (ImGui::Button("Proceed##Proceed22")) {
+      sprites.erase(deleteStartSprite,deleteEndSprite-deleteStartSprite+1);
+      finished = true;
+    }             
+    ImGui::End();
+    render();
+  
+    glRefresh();
+  } while(!finished);
+  modalMode = MODAL_NONE;
+}
+
+void displayCopySprites() {
+  bool finished = false;
+  bool first = true;
+  int copyStartSprite = 0;
+  int copyEndSprite = 0;
+  int spriteNr = 0;
+  do
+  {
+    ImGuiNewFrame();
+    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    first = false;
+    ImGui::Begin("Copy Sprites##CopySprites33");
+    ImGui::PushItemWidth(64);
+    ImGui::InputInt("InsertTo##InsertTo33", &spriteNr,0);
+    ImGui::InputInt("Sprite0##Sprite033", &copyStartSprite,0);
+    ImGui::InputInt("SpriteN##SpriteN33", &copyEndSprite,0);
+    ImGui::PopItemWidth();
+    copyStartSprite = clamp(copyStartSprite,0,(int)sprites.size()-1);
+    copyEndSprite = clamp(copyEndSprite,copyStartSprite,(int)sprites.size()-1);
+    spriteNr = clamp(spriteNr,0,(int)sprites.size());
+    if (ImGui::Button("Cancel##Cancel33")) {
+      finished = true;
+    }             
+    ImGui::SameLine();
+    if (ImGui::Button("Proceed##Proceed33")) {
+      if (spriteNr==sprites.size()) {
+        for(int i = copyStartSprite; i <= copyEndSprite; i++) {
+          sprites[i].update();
+          sprites.push_back(sprites[i]);
+        }
+      } else {
+        Array<Sprite> k;
+        {for(int i = copyEndSprite; i>= copyStartSprite; i--) {
+          sprites[i].update();
+          k.push_back(sprites[i]);
+        }}
+        {for(int i = 0; i< copyEndSprite-copyStartSprite+1; i++) {
+          sprites.insert(k[i],spriteNr);
+        }}
       }
       finished = true;
     }             
@@ -2946,6 +3036,10 @@ int main(int argc, char **argv) {
     displayLoadSave();
     if (modalMode == MODAL_RESIZESPRITE) 
       displayResizeSprite();
+    if (modalMode == MODAL_DELETESPRITES) 
+      displayDeleteSprites();
+    if (modalMode == MODAL_COPYSPRITES) 
+      displayCopySprites();
     displayQuitBox();      
 
     render();

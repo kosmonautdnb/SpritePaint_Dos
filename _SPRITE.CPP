@@ -498,6 +498,11 @@ public:
 class SpriteSheet {
 public:
   int xScroll;
+  bool halveSize;
+  SpriteSheet() {
+    xScroll = 0;
+    halveSize = false;
+  }
 };
 
 class Animation {
@@ -807,6 +812,7 @@ bool saveSpriteSheet(const char *fileName) {
       }
     }
   }
+  fclose(out);
   return true;
 }
 
@@ -1152,7 +1158,7 @@ void handleToolPencil(int mx, int my) {
 
     memset(overlay,0,sizeof(overlay));
     unsigned int col = getCurrentPalette().slotColors[getCurrentPalette().slot];
-    plot(overlay,mx,my,col);
+    plot(overlay,mx,my,col|0xff000000);
     getCurrentSprite().update();
     getCurrentSprite().texture();
     memset(overlay,0,sizeof(overlay));
@@ -1187,7 +1193,7 @@ void handleToolFloodFill(int mx, int my) {
 
     memset(overlay,0,sizeof(overlay));
     unsigned int col = getCurrentPalette().slotColors[getCurrentPalette().slot];
-    plot(overlay,mx,my,col);
+    plot(overlay,mx,my,col|0xff000000);
     getCurrentSprite().update();
     getCurrentSprite().texture();
     memset(overlay,0,sizeof(overlay));
@@ -2329,6 +2335,66 @@ bool importSpriteAtlas(const char *fileName) {
 
 HashMap<int,String> currentPaths;
 
+RGBAImage loadMyFormats(const char *fileName) {
+  RGBAImage r;
+  FILE *in = fopen(fileName,"rb");
+  if (in == NULL) return r; //img.data is NULL
+  unsigned char s1,s2;
+  fread(&s1,1,1,in);
+  fread(&s2,1,1,in);
+  if (s1 == 'S' && s2 == 'P') {
+    unsigned char w,h;
+    fread(&w,1,1,in);
+    fread(&h,1,1,in);
+    r.width = w;
+    r.height = h;
+    r.data = new unsigned int[w*h];
+    fread(r.data,1,w*h*4,in);
+  }
+  if (s1 == 'S' && s2 == 'S') {
+    unsigned short spriteCount;
+    fread(&spriteCount,1,2,in);
+    if (spriteCount <= 0) return r;
+    int spriteWidthHeight = 32;
+    int textureWidth = 512;
+    int spritesPerLine = textureWidth/spriteWidthHeight;
+    int w2 = spriteWidthHeight*spriteCount;
+    if (w2 > textureWidth) w2 = textureWidth;
+    int h2 = spriteWidthHeight*((spriteCount+spritesPerLine-1)/spritesPerLine);
+    r.width = w2;
+    r.height = h2;
+    r.data = new unsigned int[w2*h2];
+    memset(r.data,0,w2*h2*4);
+    for (int i = 0; i < spriteCount; i++) {
+      char name[10];
+      fread(name,1,10,in);
+      unsigned char s1,s2;
+      fread(&s1,1,1,in);
+      fread(&s2,1,1,in);
+      if (s1 == 'S' && s2 == 'P') {
+        unsigned char w,h;
+        fread(&w,1,1,in);
+        fread(&h,1,1,in);
+        unsigned int *data = new unsigned int[w*h];
+        fread(data,1,w*h*4,in);
+        for (int y = 0; y < spriteWidthHeight; y++) {
+          for (int x = 0; x < spriteWidthHeight; x++) {
+            int rx = x + (i % spritesPerLine)*spriteWidthHeight;
+            int ry = y + (i / spritesPerLine)*spriteWidthHeight;
+            int cx = x * w / spriteWidthHeight;
+            int cy = y * h / spriteWidthHeight;
+            if (rx>=0&&ry>=0&&rx<w2&&ry<h2&&cx>=0&&cy>=0&&cx<w&&cy<h) {
+              r.data[rx+ry*w2]=data[cx+cy*w];
+            }
+          }
+        }
+        delete[] data;
+      }
+    }
+  }
+  fclose(in);
+  return r;
+}
 
 unsigned int previewPictureId=0;
 int previewPictureWidth=1;
@@ -2340,7 +2406,10 @@ void loadPreviewPicture(const char *fileName) {
   }
   if (fileName == NULL) return;
   RGBAImage img = RGBAImage::fromFile(fileName);
-  if (img.data == NULL) return;
+  if (img.data == NULL) {
+    img = loadMyFormats(fileName);
+    if (img.data == NULL) return;
+  }
   glGenTextures(1, &previewPictureId);
   glBindTexture(GL_TEXTURE_2D, previewPictureId);
   glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,img.width,img.height,0,GL_RGBA,GL_UNSIGNED_BYTE,img.data);
@@ -2541,6 +2610,10 @@ void displaySpriteSheet() {
     sprites[i].update();
     sprites[i].texture();
   }
+  ImGui::SameLine();
+  ImGui::Text(" ");
+  ImGui::SameLine();
+  ImGui::Checkbox("x2",&getCurrentSpriteSheet().halveSize);
   if (!sprites.empty()) {
     if (ImGui::Button("Erase")) {
       if (sprites.size()>1) {
@@ -2557,10 +2630,28 @@ void displaySpriteSheet() {
   ImGui::PopItemWidth();
   ImGui::EndChild();
   ImGui::PopStyleVar();
+  
+  ImVec2 k0 = ImGui::GetCursorPos();
+  k0.x += 93;
 
+  bool doubleLinePainted=false;
   for (int i = getCurrentSpriteSheet().xScroll; i < sprites.size(); i++) {
+    int wh=52;
+    if (getCurrentSpriteSheet().halveSize) wh/=2;
     ImGui::SameLine();
     ImVec2 cp0 = ImGui::GetCursorScreenPos();
+    if (cp0.x > XRES) {
+      if (doubleLinePainted) 
+        break;
+      if (getCurrentSpriteSheet().halveSize) {
+        ImGui::Text(""); // remove same line;
+        ImGui::SetCursorPosX(k0.x);
+        cp0 = ImGui::GetCursorScreenPos();
+        doubleLinePainted=true;
+      } else {
+        break;
+      }
+    }
     ImVec2 cpx = ImGui::GetCursorPos();
     ImVec2 cpx2 = cpx;
     cpx2.x-=1;
@@ -2572,7 +2663,7 @@ void displaySpriteSheet() {
     ImGui::SetCursorPos(cpx);
     int w = sprites[i].width;
     int h = sprites[i].height;
-    ImVec2 size = ImVec2(52*4*9/3/16,52);
+    ImVec2 size = ImVec2(wh*4*9/3/16,wh);
     ImVec2 cp1 = ImVec2(cp0.x+size.x,cp0.y+size.y);
     ImVec2 maxTex = ImVec2((float)w/MAXSPRITEWIDTH,(float)h/MAXSPRITEHEIGHT);
     ImGui::Image((void*)sprites[i].textureId,size,ImVec2(0,0),maxTex);

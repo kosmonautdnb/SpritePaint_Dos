@@ -5,6 +5,7 @@ copy /Y c:\_STL_\IMGUI.H
 copy /Y c:\_STL_\IMGUI.CPP
 copy /Y c:\_STL_\IMGUIGL.HPP
 copy /Y c:\_STL_\IMGUIGL.CPP
+copy /Y c:\_STL_\LICENSE.GUI
 copy /Y c:\_STL_\FILEDLG.HPP
 copy /Y c:\_STL_\FILEDLG.CPP
 copy /Y c:\_STL_\DOS.HPP

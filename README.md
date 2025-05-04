@@ -50,3 +50,5 @@ DEVICE=C:_DOS_\BIN\HIMEMX.exe
 DEVICE=C:_DOS_\BIN\JEMM386.exe /SB /MAX=262144
 
 /MAX=262144 means 256MB may be available.
+
+You may compile it with Dos4GW (instead of PMode/w) but Dos4GW only supports 32MB of memory. (No memory checks are implemented in the sources.)

@@ -424,7 +424,7 @@ public:
   Palette() {
     slot = 0;
     textureId = 0;
-    width = sqrt(MAXPALETTECOLORS);
+    width = 16;//sqrt(MAXPALETTECOLORS);
     height = (MAXPALETTECOLORS+width-1)/width;
     for (int i = 0; i < MAXPALETTECOLORS; i++) colors[i] = defaultPal[i];
     for (int j = 0; j < MAXPALETTESLOTS; j++) slotColors[j] = colors[j];
@@ -687,6 +687,24 @@ bool fromFile(const char *fileName, void *data, int dataSize) {
   FILE *in = fopen(fileName,"rb");
   if (in == NULL) {someError = true; return false;}
   fread(data,1,dataSize,in);
+  fclose(in);
+  return true;
+}
+
+bool savePalette(const char *fileName) {
+  return toFile(fileName,getCurrentPalette().colors,MAXPALETTECOLORS*4);
+}
+
+bool loadPalette(const char *fileName) {
+  FILE *in = fopen(fileName,"rb");
+  if (in == NULL) {someError = true; return false;}
+  fseek(in,0,SEEK_END);
+  int fileSize = ftell(in);
+  fseek(in,0,SEEK_SET);
+  if (fileSize>MAXPALETTECOLORS*4) {fclose(in);someError = true; return false;}
+  memset(getCurrentPalette().colors,0,MAXPALETTECOLORS*4);
+  fread(getCurrentPalette().colors,1,fileSize,in);
+  getCurrentPalette().update();
   fclose(in);
   return true;
 }
@@ -2700,8 +2718,8 @@ void displayLoadSave() {
   String fname = f->getSelectedFileName();
   if (!fname.empty()) {
     switch(loadSave) {
-    case LoadSave_SavePalette: toFile(fname.c_str(),&getCurrentPalette().colors,MAXPALETTECOLORS*4); break;
-    case LoadSave_LoadPalette: fromFile(fname.c_str(),&getCurrentPalette().colors,MAXPALETTECOLORS*4); break;
+    case LoadSave_SavePalette: savePalette(fname.c_str()); break;
+    case LoadSave_LoadPalette: loadPalette(fname.c_str()); break;
     case LoadSave_SaveSprite: {saveSprite(fname.c_str());} break;
     case LoadSave_LoadSprite: {loadSprite(fname.c_str());} break;
     case LoadSave_SaveSpriteSheet: {saveSpriteSheet(fname.c_str());} break;

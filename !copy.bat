@@ -26,4 +26,6 @@ copy /Y c:\_STL_\IMAGE.CPP
 copy /Y c:\_STL_\STBIMAGE.HPP
 copy /Y c:\_STL_\STBIMGWR.HPP
 copy /Y c:\_STL_\STBIMGRS.HPP
+copy /Y c:\_STL_\PSDIMAGE.HPP
+copy /Y c:\_STL_\PSDIMAGE.CPP
 copy /Y c:\_VCODE_\VCODE.EXE

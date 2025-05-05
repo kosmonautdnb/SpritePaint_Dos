@@ -4,6 +4,7 @@
 #include "hashmap.hpp"
 #include "filedlg.hpp"
 #include "image.hpp"
+#include "psdimage.hpp"
 #include <stdio.h>
 #include <math.h>
 
@@ -41,6 +42,8 @@ extern double mouseSpeed;
 extern int mouseButtons;              
 extern int currentKey;
 double fps;
+#define _WIDTH(__x__) ((__x__)*XRES/640)
+#define _HEIGHT(__y__) ((__y__)*YRES/480)
 
 unsigned int defaultPal[]={
      0x00000000,
@@ -318,6 +321,7 @@ enum {
   LoadSave_ExportSprites = 12,
   LoadSave_ImportSpritesCounter = 13,
   LoadSave_ExportSpritesCounter = 14,
+  LoadSave_ImportPSDLayers = 15,
 };
 
 int loadSave = LoadSave_None;
@@ -356,8 +360,8 @@ public:
   GLuint textureId;
   bool mark;
   Sprite() {
-    //memset(bitmap,0x00,MAXSPRITEWIDTH*MAXSPRITEHEIGHT*sizeof(unsigned int));
     bitmap.resize(MAXSPRITEWIDTH*MAXSPRITEHEIGHT);
+    memset(&bitmap[0],0x00,MAXSPRITEWIDTH*MAXSPRITEHEIGHT*sizeof(unsigned int));
     width = 64;
     height = 64;
     sprintf(name,"Not named");
@@ -659,6 +663,11 @@ T clamp(const T &v, const T &mn, const T &mx) {
 template<class T>
 T sign(const T &v) {
   return (v<0?-1:(v>0?1:0));
+}
+
+void updateAll() {
+  for (int i = 0; i < sprites.size(); i++) {sprites[i].update();sprites[i].texture();}
+  getCurrentPalette().update();
 }
 
 void toColorString(char *txt, unsigned int color) {
@@ -964,6 +973,8 @@ void newWorkSpace() {
   makeUndoPoint();
 }
 
+int coordX = 0;
+int coordY = 0;
 void displayMenuBar() {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10,1));
     ImGui::PushStyleColor(ImGuiCol_MenuBarBg,ImVec4(0xff/255.f,0xff/255.f,0xff/255.f,0xff/255.f));
@@ -1097,8 +1108,11 @@ void displayMenuBar() {
       if (ImGui::BeginMenu("Sprites")) {
         if (ImGui::MenuItem("Import sprite atlas [png]")) loadSave = LoadSave_ImportSpriteAtlas;
         if (ImGui::MenuItem("Export sprite sheet [png]")) loadSave = LoadSave_ExportSprites;
+        ImGui::Separator();
         if (ImGui::MenuItem("Import sprites [pngs/counter]")) loadSave = LoadSave_ImportSpritesCounter;
         if (ImGui::MenuItem("Export sprites [pngs/counter]")) loadSave = LoadSave_ExportSpritesCounter;
+        ImGui::Separator();
+        if (ImGui::MenuItem("Import layers [psd](experimental)")) loadSave = LoadSave_ImportPSDLayers;
         ImGui::Separator();
         if (ImGui::MenuItem("Quantize colors of all sprites")) quantizeAll();
         ImGui::Separator();
@@ -1114,7 +1128,7 @@ void displayMenuBar() {
         if (ImGui::MenuItem("Copy sprites")) modalMode=MODAL_COPYSPRITES;
         ImGui::EndMenu();
       }
-      ImGui::Text("\t\t\t\t\t\t\t\t\t\t%s  FPS/%d",currentTimeString().c_str(),(int)fps);
+      ImGui::Text("\t\t\t\t\t\t\t%02d:%02d %s  FPS/%d",coordX,coordY,currentTimeString().c_str(),(int)fps);
       ImGui::EndMainMenuBar();
     }
     ImGui::PopStyleColor();
@@ -1126,8 +1140,8 @@ void displayMenuBar() {
 void displayQuitBox() {
   if (askForQuit) {
     ImGui::SetNextWindowFocus();
-    ImGui::SetNextWindowPos(ImVec2((XRES-50)/2,(YRES-40)/2));
-    ImGui::Begin("Quit?",NULL,ImVec2(50,40),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoCollapse);
+    ImGui::SetNextWindowPos(ImVec2((XRES-_WIDTH(50))/2,(YRES-_HEIGHT(40))/2));
+    ImGui::Begin("Quit?",NULL,ImVec2(_WIDTH(50),_HEIGHT(40)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoCollapse);
     if(ImGui::Button("Yes") || currentKey == 'y' || currentKey == GL_VK_ENTER) {
       quit = true;
     }
@@ -2060,10 +2074,11 @@ void handleTool(int mx, int my) {
 int lastMx = 0;
 int lastMy = 0;
 void displaySpriteEditField() {
-  ImGui::SetNextWindowPos(ImVec2(180,20));
-  String coord = "";
-  if (lastMx>=0&&lastMy>=0&&lastMx<getCurrentSprite().width&&lastMy<getCurrentSprite().height) coord = " " + String(doublePixel(lastMx))+":"+String(lastMy) + " ";
-  ImGui::Begin(String(("Sprite Editor /")+String(getCurrentTool().getName())+coord+"##SpriteEditor").c_str(),NULL,ImVec2(385,385),-1.f,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+  ImGui::SetNextWindowPos(ImVec2(_WIDTH(180),_HEIGHT(20)));
+  coordX = 0;
+  coordY = 0;
+  if (lastMx>=0&&lastMy>=0&&lastMx<getCurrentSprite().width&&lastMy<getCurrentSprite().height) {coordX = lastMx; coordY = lastMy;}
+  ImGui::Begin(String(("Sprite Editor /")+String(getCurrentTool().getName())+"##SpriteEditor").c_str(),NULL,ImVec2(_WIDTH(385),_HEIGHT(385)),-1.f,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
   ImGui::PushItemWidth(80);
   ImGui::InputInt("Nr", &getCurrentSpriteCanvas().spriteNr);
   getCurrentSpriteCanvas().spriteNr = clamp(getCurrentSpriteCanvas().spriteNr,0,(int)sprites.size()-1);
@@ -2081,7 +2096,7 @@ void displaySpriteEditField() {
   ImGui::SameLine();
   ImGui::Checkbox("Grid",&getCurrentSpriteCanvas().gridOn);
   ImGui::SameLine();
-  if (ImGui::Checkbox("BG",&getCurrentSpriteCanvas().background)) getCurrentSprite().update();
+  if (ImGui::Checkbox("BG",&getCurrentSpriteCanvas().background)) {updateAll();}
   if (currentKey == '+') getCurrentSpriteCanvas().zoom += 1.0;
   if (currentKey == '-') getCurrentSpriteCanvas().zoom -= 1.0;
   getCurrentSpriteCanvas().zoom = clamp(getCurrentSpriteCanvas().zoom,(float)MINSPRITEZOOM,(float)MAXSPRITEZOOM);
@@ -2135,8 +2150,8 @@ int colIdx = -1;
 bool colorInputInit = true;
 
 void displayColorPicker() {
-  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(0,330)); isInit = false;
-  ImGui::Begin("Palette",NULL,ImVec2(180,170),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(330))); isInit = false;
+  ImGui::Begin("Palette",NULL,ImVec2(_WIDTH(180),_HEIGHT(170)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
   ImVec2 windowSize = ImGui::GetWindowSize();
   ImVec2 windowPos = ImGui::GetWindowPos();
   ImVec2 cp0 = ImGui::GetCursorScreenPos();
@@ -2253,12 +2268,12 @@ bool importSpriteAtlas(const char *fileName) {
   do
   {
     ImGuiNewFrame();
-    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
     first = false;
 
     ImGui::Begin((String("Image:")+String((int)floor(img.width*zoom3))+"x"+String((int)floor(img.height*zoom3))+"##Image10").c_str());
     ImGui::PushItemWidth(64);
-    ImGui::InputFloat("Zoom",&zoom,0.5);
+    ImGui::InputFloat("Zoom##ZoomSpa",&zoom,0.5);
     ImGui::PopItemWidth();
     zoom = clamp(zoom,0.1f,16.0f);
     ImVec2 cp0 = ImGui::GetCursorScreenPos();
@@ -2294,7 +2309,7 @@ bool importSpriteAtlas(const char *fileName) {
 
     ImGui::Begin("Sprite");
     ImGui::PushItemWidth(64);
-    ImGui::InputFloat("Zoom",&zoom2,0.5);
+    ImGui::InputFloat("Zoom##ZoomSpr",&zoom2,0.5);
     zoom2 = clamp(zoom2,0.1f,16.0f);
     ImGui::InputInt("SpriteNr",&displaySprite);
     displaySprite = clamp(displaySprite,firstSpriteNr,lastSpriteNr);
@@ -2538,18 +2553,19 @@ bool importSpritesCounter(const char *fileName) {
   do
   {
     ImGuiNewFrame();
-    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
     first = false;
+    ImGui::SetNextWindowFocus();
     ImGui::Begin("Import Sprites##ImportSprites66");
     ImGui::PushItemWidth(64);
-    ImGui::InputInt("InsertTo", &destSprite,0);
-    ImGui::InputInt("sprite0", &firstSprite,0);
-    ImGui::InputInt("spriteN", &lastSprite,0);
+    ImGui::InputInt("InsertTo##InsertTo66", &destSprite,0);
+    ImGui::InputInt("sprite0##Sprite066", &firstSprite,0);
+    ImGui::InputInt("spriteN##SpriteN66", &lastSprite,0);
     ImGui::PopItemWidth();
     destSprite = clamp(destSprite,0,(int)sprites.size());
     firstSprite = clamp(firstSprite,0,9999);
     lastSprite = clamp(lastSprite,firstSprite,9999);
-    if (ImGui::Button("Cancel##Cancel66")) {
+    if (ImGui::Button("Cancel##Cancel66")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
       finished = true;
     }
     ImGui::SameLine();
@@ -2623,6 +2639,152 @@ bool exportSpritesCounter(const char *fileName) {
   return true;
 }
 
+bool bgPixels = false;
+unsigned int swizzleRGBA(int x, int y, unsigned int t) {
+  unsigned int t2 = (t & 0xff00ff00)|((t>>16)&0x000000ff)|((t<<16)&0x00ff0000);
+  if (bgPixels) {
+    unsigned int a = (t >> 24) & 255;
+    int r0 = t2 & 255;
+    int g0 = (t2>>8) & 255;
+    int b0 = (t2>>16) & 255;
+    int z = (((x + y)%3)+1)*0x20;
+    r0 = (r0-z)*a/255+z;
+    g0 = (g0-z)*a/255+z;
+    b0 = (b0-z)*a/255+z;
+    return 0xff000000|(r0)|(g0<<8)|(b0<<16);
+  }
+  return t2;
+}
+
+bool importPSDLayers(const char *fileName) {
+  PSDImage img;
+  if (!img.Load(fileName)) {someError = true;return false;}
+  if (img.NumLayers()==0) {someError = true;return false;}
+  int imageWidth = img.header.Columns;
+  int imageHeight = img.header.Rows;
+  if (imageWidth > MAXSPRITEWIDTH) {someError = true;return false;}
+  if (imageHeight > MAXSPRITEHEIGHT) {someError = true;return false;}
+
+  float zoom = 3.0;
+  int destSprite = 0;
+  int layer = 0;
+  int layer0 = 0;
+  int layerN = img.NumLayers()-1;
+  bool doublePixel = getCurrentSpriteCanvas().doublePixel;
+  bool finished = false;
+  bool first = true;
+  unsigned int textureId = 0;
+  bgPixels = false;
+  do
+  {
+    ImGuiNewFrame();
+
+    ImGui::Begin(("Preview "+String(imageWidth)+"x"+String(imageHeight)+"##Preview77").c_str());
+    ImGui::PushItemWidth(64);
+    ImGui::InputFloat("Zoom##Zoom77",&zoom,0.5);
+    ImGui::InputInt("Layer##Layer77",&layer,1);
+    ImGui::SameLine();
+    ImGui::Checkbox("BG##BG77",&bgPixels);
+    ImGui::PopItemWidth();
+    zoom = clamp(zoom,0.1f,16.0f);
+    layer = clamp(layer,0,img.NumLayers()-1);
+
+    int ofsX,ofsY,sizX,sizY;
+    unsigned int *imagedata=img.GetLayerData(layer, sizX, sizY, ofsX, ofsY);
+    unsigned int *data = new unsigned int[imageWidth*imageHeight];
+    memset(data,0,imageWidth*imageHeight*4);
+    for (int y = 0; y < sizY; y++) {
+      for (int x = 0; x < sizX; x++) {
+        int xp = ofsX + x;
+        int yp = ofsY + y;
+        if (xp<imageWidth&&yp<imageHeight&&xp>=0&&yp>=0)
+          data[xp+yp*imageWidth]=swizzleRGBA(x,y,imagedata[x+y*sizX]);
+      }
+    }
+    if (textureId != 0) glDeleteTextures(1,&textureId);
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,imageWidth,imageHeight,0,GL_RGBA,GL_UNSIGNED_BYTE,data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    delete[] data;
+
+    ImVec2 dp=ImVec2(imageWidth*zoom*(doublePixel ? 2 : 1)*getCurrentSpriteCanvas().aspect,imageHeight*zoom);
+    ImVec2 cp0 = ImGui::GetCursorScreenPos();
+    ImVec2 cp1 = cp0;
+    cp0.x += dp.x;
+    cp0.y += dp.y;
+    ImGui::Image((void*)textureId,dp);
+    ImDrawList *l = ImGui::GetWindowDrawList();
+    l->AddRect(cp0,cp1,0xff202020,0);
+    ImGui::End();
+
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
+    first = false;
+    ImGui::SetNextWindowFocus();
+    ImGui::Begin("Import Layers[psd]##ImportLayers77");
+    ImGui::PushItemWidth(64);
+    ImGui::InputInt("InsertTo##InsertTo77", &destSprite,0);
+    ImGui::Separator();
+    ImGui::Text("Last layer:%d",img.NumLayers()-1);
+    ImGui::InputInt("Layer0##Layer077", &layer0,0);
+    ImGui::InputInt("LayerN##LayerN77", &layerN,0);
+    ImGui::Separator();
+    ImGui::Checkbox("DoublePixel##DoublePixel77)",&doublePixel);
+    ImGui::PopItemWidth();
+    destSprite = clamp(destSprite,0,(int)sprites.size());
+    layer0 = clamp(layer0,0,img.NumLayers()-1);
+    layerN = clamp(layerN,layer0,img.NumLayers()-1);
+    if (ImGui::Button("Cancel##Cancel77")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      finished = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Proceed##Proceed77")) {
+      Array<Sprite> ins;
+      for(int i = layer0; i <= layerN; i++) {
+        int ofsX,ofsY,sizX,sizY;
+        unsigned int *imagedata=img.GetLayerData(i, sizX, sizY, ofsX, ofsY);
+        Sprite k;
+        k.width = imageWidth*(doublePixel?2:1);
+        k.height = imageHeight;
+        for (int y = 0; y < sizY; y++) {
+          for (int x = 0; x < sizX*(doublePixel?2:1); x++) {
+            int xp = ofsX*(doublePixel?2:1) + x;
+            int yp = ofsY + y;
+            if (xp<k.width&&yp<k.height&&xp>=0&&yp>=0)
+              k.bitmap[xp+yp*MAXSPRITEWIDTH]=swizzleRGBA(x,y,imagedata[x/(doublePixel?2:1)+y*sizX]);
+          }
+        }
+        ins.push_back(k);
+      }
+      if (destSprite<sprites.size()) {
+        for (int i = layerN-layer0; i>= 0; i--) {
+            sprites.insert(ins[i],destSprite);
+            sprites[destSprite].update();
+            sprites[destSprite].texture();
+        }
+      } else {
+        for (int i = 0; i <= layerN-layer0; i++) {
+            sprites.push_back(ins[i]);
+            sprites.back().update();
+            sprites.back().texture();
+        }
+      }
+      finished = true;
+    }             
+    ImGui::End();
+    render();
+  
+    glRefresh();
+  } while(!finished);
+
+   if (textureId != 0) glDeleteTextures(1,&textureId);
+
+  return true;
+}
+
 unsigned int previewPictureId=0;
 int previewPictureWidth=1;
 int previewPictureHeight=1;
@@ -2689,7 +2851,7 @@ void displayLoadSave() {
       cv2.x += 64;
       cv2.y += 64;
       ImGui::SetNextWindowSize(cv2);
-      if (first2) ImGui::SetNextWindowPos(ImVec2(0,0));
+      if (first2) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
       first2=false;
       ImGui::Begin(("Preview "+String(previewPictureWidth)+"x"+String(previewPictureHeight)+"##Preview44").c_str());
       ImGui::PushItemWidth(64);
@@ -2700,7 +2862,7 @@ void displayLoadSave() {
       ImGui::End();
     }
 
-    if (first) ImGui::SetNextWindowPos(ImVec2(20,20));
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(20),_HEIGHT(20)));
     first = false;
     ImGui::SetNextWindowFocus();
     finished = f->display();
@@ -2732,8 +2894,12 @@ void displayLoadSave() {
     case LoadSave_ExportSprites: {exportSprites(fname.c_str());} break;
     case LoadSave_ImportSpritesCounter: {importSpritesCounter(fname.c_str());} break;
     case LoadSave_ExportSpritesCounter: {exportSpritesCounter(fname.c_str());} break;
+    case LoadSave_ImportPSDLayers: {importPSDLayers(fname.c_str());} break;
     }
   }
+
+  updateAll();
+  ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0; // clear escape key, just in case it was used for "cancel" before
 
   loadSave = LoadSave_None;
   loadPreviewPicture(NULL);
@@ -2778,8 +2944,8 @@ void flipClipBoardY() {
 }
 
 void displayToolWindow() {
-  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(0,20)); isInit = false;
-  ImGui::Begin("Tools", NULL, ImVec2(180,310),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(20))); isInit = false;
+  ImGui::Begin("Tools", NULL, ImVec2(_WIDTH(180),_HEIGHT(310)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
   ImGui::PushItemWidth(70);
   ImGui::SliderFloat("Sensitivity", &getCurrentTool().mouseSpeed, MOUSESPEEDMIN, MOUSESPEEDMAX);
   ImGui::PopItemWidth();
@@ -2866,8 +3032,8 @@ void displayToolWindow() {
 }
 
 void displaySpriteSheet() {
-  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(180,405)); isInit = false;
-  ImGui::Begin("Sprites", NULL, ImVec2(460,75),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(180),_HEIGHT(405))); isInit = false;
+  ImGui::Begin("Sprites", NULL, ImVec2(_WIDTH(460),_HEIGHT(75)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
 
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(0,0));
   ImGui::BeginChild("SheetConfig",ImVec2(90,55));
@@ -3018,8 +3184,8 @@ void displayColorWheel() {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 
-  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(565,20)); isInit = false;
-  ImGui::Begin("ColorWheel", NULL, ImVec2(75,120),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoTitleBar);
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(565),_HEIGHT(20))); isInit = false;
+  ImGui::Begin("ColorWheel", NULL, ImVec2(_WIDTH(75),_HEIGHT(120)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoTitleBar);
   ImVec2 cp1 = ImGui::GetCursorScreenPos();
   ImVec2 cp2 = cp1;
   cp2.x += COLORWHEELXRES;
@@ -3054,8 +3220,8 @@ void displayColorWheel() {
 int playedAt=-1;
 
 void displayAnimation() {
-  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(565,140)); isInit = false;
-  ImGui::Begin("Anim", NULL, ImVec2(75,180),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(565),_HEIGHT(140))); isInit = false;
+  ImGui::Begin("Anim", NULL, ImVec2(_WIDTH(75),_HEIGHT(180)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
   ImGui::Text("Speed/FPS");
   ImGui::InputFloat("##Speed",&getCurrentAnimation().speed);
   ImGui::Text("Frame0");
@@ -3090,8 +3256,8 @@ void displayAnimation() {
 }
 
 void displayTestBox() {
-  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(565,320)); isInit = false;
-  ImGui::Begin("TestBox", NULL, ImVec2(75,85),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoTitleBar);
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(565),_HEIGHT(320))); isInit = false;
+  ImGui::Begin("TestBox", NULL, ImVec2(_WIDTH(75),_HEIGHT(85)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoTitleBar);
   int width = 50;
   int height = width/getCurrentSpriteCanvas().aspect;
   ImVec2 cv = ImVec2(width/getCurrentTestBox().width,height/getCurrentTestBox().height);
@@ -3131,7 +3297,7 @@ void displayResizeSprite() {
   do
   {
     ImGuiNewFrame();
-    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
     first = false;
     ImGui::Begin("New Size##NewSize11");
     ImGui::Text("Old Size:%dx%d",getCurrentSprite().width,getCurrentSprite().height);
@@ -3141,7 +3307,7 @@ void displayResizeSprite() {
     ImGui::PopItemWidth();
     newSizeX = clamp(newSizeX,1,MAXSPRITEWIDTH);
     newSizeY = clamp(newSizeY,1,MAXSPRITEHEIGHT);
-    if (ImGui::Button("Cancel##Cancel11")) {
+    if (ImGui::Button("Cancel##Cancel11")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
       finished = true;
     }             
     ImGui::SameLine();
@@ -3184,7 +3350,7 @@ void displayDeleteSprites() {
   do
   {
     ImGuiNewFrame();
-    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
     first = false;
     ImGui::Begin("Delete Sprites##DeleteSprites22");
     ImGui::PushItemWidth(64);
@@ -3193,7 +3359,7 @@ void displayDeleteSprites() {
     ImGui::PopItemWidth();
     deleteStartSprite = clamp(deleteStartSprite,0,(int)sprites.size()-1);
     deleteEndSprite = clamp(deleteEndSprite,deleteStartSprite,(int)sprites.size()-1);
-    if (ImGui::Button("Cancel##Cancel22")) {
+    if (ImGui::Button("Cancel##Cancel22")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
       finished = true;
     }             
     ImGui::SameLine();
@@ -3218,7 +3384,7 @@ void displayCopySprites() {
   do
   {
     ImGuiNewFrame();
-    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
     first = false;
     ImGui::Begin("Copy Sprites##CopySprites33");
     ImGui::PushItemWidth(64);
@@ -3229,7 +3395,7 @@ void displayCopySprites() {
     copyStartSprite = clamp(copyStartSprite,0,(int)sprites.size()-1);
     copyEndSprite = clamp(copyEndSprite,copyStartSprite,(int)sprites.size()-1);
     spriteNr = clamp(spriteNr,0,(int)sprites.size());
-    if (ImGui::Button("Cancel##Cancel33")) {
+    if (ImGui::Button("Cancel##Cancel33")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
       finished = true;
     }             
     ImGui::SameLine();
@@ -3265,7 +3431,7 @@ void displaySomeError() {
   do
   {
     ImGuiNewFrame();
-    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
     first = false;
     ImGui::Begin("Some Error##SomeError55");
     ImGui::Text("!!Some Error happened!!\nThis may be a file write/read error,\nor something other that\ndidn't go well.\nMaybe sprite size too big?");

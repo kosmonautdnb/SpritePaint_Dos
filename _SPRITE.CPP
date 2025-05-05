@@ -9,6 +9,7 @@
 
 #define XRES 640
 #define YRES 480
+#define MONITORASPECT (16.0/9.0) // (4.0/3.0)
 
 /*
 #define VIDEO
@@ -315,7 +316,8 @@ enum {
   LoadSave_ExportPalette = 10,
   LoadSave_ImportSpriteAtlas = 11,
   LoadSave_ExportSprites = 12,
-  LoadSave_ExportSpritesCounter = 13,
+  LoadSave_ImportSpritesCounter = 13,
+  LoadSave_ExportSpritesCounter = 14,
 };
 
 int loadSave = LoadSave_None;
@@ -337,7 +339,7 @@ public:
   SpriteCanvas() {
     spriteNr = 0;
     zoom = 5.f;
-    aspect = 4.0/3.0*9.0/16.0;
+    aspect = (double)XRES/YRES/MONITORASPECT;
     gridOn = false;
     background = false;
     doublePixel = false;
@@ -594,7 +596,7 @@ void doScreenShot(const char *fileName) {
   img.width = XRES;
   img.height = YRES;
   img.data = glFrameBuffer;
-  img = img.getResized(img.height*16.0/9.0,img.height);
+  img = img.getResized(img.height*MONITORASPECT,img.height);
   for (int i = 0; i < img.width*img.height;i++) img.data[i]|=0xff000000;
   if (!img.savePNG(fileName)) someError = true;
   delete[] img.data;
@@ -1077,6 +1079,7 @@ void displayMenuBar() {
       if (ImGui::BeginMenu("Sprites")) {
         if (ImGui::MenuItem("Import sprite atlas [png]")) loadSave = LoadSave_ImportSpriteAtlas;
         if (ImGui::MenuItem("Export sprite sheet [png]")) loadSave = LoadSave_ExportSprites;
+        if (ImGui::MenuItem("Import sprites [pngs/counter]")) loadSave = LoadSave_ImportSpritesCounter;
         if (ImGui::MenuItem("Export sprites [pngs/counter]")) loadSave = LoadSave_ExportSpritesCounter;
         ImGui::Separator();
         if (ImGui::MenuItem("Quantize colors of all sprites")) quantizeAll();
@@ -2091,7 +2094,9 @@ void displaySpriteEditField() {
   if (getCurrentSpriteCanvas().gridOn) {
     int w = getCurrentSprite().width;
     int h = getCurrentSprite().height;
-    for (int x = 1; x < w; x++) {
+    int add = 1;
+    if (getCurrentSpriteCanvas().doublePixel) add = 2;
+    for (int x = 1; x < w; x+=add) {
       int xp = x * (cp1.x-cp0.x) / w + cp0.x;
       l->AddLine(ImVec2(xp,cp0.y),ImVec2(xp,cp1.y),0x40ffffff);
     }
@@ -2492,6 +2497,87 @@ void exportSprites(const char *fileName) {
   delete[] data;
 }
 
+bool importSpritesCounter(const char *fileName) {
+  String path = getPath(String(fileName));
+  String name = getName(String(fileName));
+  int firstCounterPos=-1;
+  for (int i =name.size()-1; i >= 0; i--) {
+    char c = name[i];
+    if (c >= '0' && c <= '9')
+      firstCounterPos = i;
+    else
+      break;
+  }
+  if (firstCounterPos == -1) {someError = true; return false;}
+  if (firstCounterPos < name.size()-4) {someError = true; return false;}
+  int a = atoi(&name[firstCounterPos]);
+  static int destSprite = 0;
+  int firstSprite = a;
+  int lastSprite = a;   
+
+  bool finished = false;
+  bool first = true;
+  do
+  {
+    ImGuiNewFrame();
+    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    first = false;
+    ImGui::Begin("Import Sprites##ImportSprites66");
+    ImGui::PushItemWidth(64);
+    ImGui::InputInt("InsertTo", &destSprite,0);
+    ImGui::InputInt("sprite0", &firstSprite,0);
+    ImGui::InputInt("spriteN", &lastSprite,0);
+    ImGui::PopItemWidth();
+    destSprite = clamp(destSprite,0,(int)sprites.size());
+    firstSprite = clamp(firstSprite,0,9999);
+    lastSprite = clamp(lastSprite,firstSprite,9999);
+    if (ImGui::Button("Cancel##Cancel66")) {
+      finished = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Proceed##Proceed66")) {
+      Array<Sprite> ins;
+      for (int i = firstSprite; i <= lastSprite; i++) {
+        char buffer[10];
+        sprintf(buffer,"%04d",i);
+        String fName = path + name.substr(0,firstCounterPos) + String(buffer)+".png";
+        RGBAImage img = RGBAImage::fromFile(fName.c_str());
+        if (img.data == NULL) {someError = true; break;}
+        Sprite spr;
+        spr.width = img.width;
+        spr.height = img.height;
+        for (int y = 0; y < spr.height; y++) {
+          for (int x = 0; x < spr.width; x++) {
+            spr.bitmap[x+y*MAXSPRITEWIDTH] = img.data[x+y*img.width];
+          }
+        }
+        ins.push_back(spr);
+      }
+      if (!someError) {
+        if (destSprite<sprites.size()) {
+          for (int i = lastSprite-firstSprite; i>= 0; i--) {
+              sprites.insert(ins[i],destSprite);
+              sprites[destSprite].update();
+              sprites[destSprite].texture();
+          }
+        } else {
+          for (int i = 0; i <= lastSprite-firstSprite; i++) {
+              sprites.push_back(ins[i]);
+              sprites.back().update();
+              sprites.back().texture();
+          }
+        }
+      }
+      finished = true;
+    }             
+    ImGui::End();
+    render();
+  
+    glRefresh();
+  } while(!finished);
+  return true;
+}
+
 bool exportSpritesCounter(const char *fileName) {
   String path = getPath(String(fileName));
   String name = getName(String(fileName));
@@ -2626,6 +2712,7 @@ void displayLoadSave() {
     case LoadSave_ExportPalette: {exportPalette(fname.c_str());} break;
     case LoadSave_ImportSpriteAtlas: {importSpriteAtlas(fname.c_str());} break;
     case LoadSave_ExportSprites: {exportSprites(fname.c_str());} break;
+    case LoadSave_ImportSpritesCounter: {importSpritesCounter(fname.c_str());} break;
     case LoadSave_ExportSpritesCounter: {exportSpritesCounter(fname.c_str());} break;
     }
   }
@@ -2828,7 +2915,7 @@ void displaySpriteSheet() {
     ImGui::SetCursorPos(cpx);
     int w = sprites[i].width;
     int h = sprites[i].height;
-    ImVec2 size = ImVec2(wh*4*9/3/16,wh);
+    ImVec2 size = ImVec2(wh*getCurrentSpriteCanvas().aspect,wh);
     ImVec2 cp1 = ImVec2(cp0.x+size.x,cp0.y+size.y);
     ImVec2 maxTex = ImVec2((float)w/MAXSPRITEWIDTH,(float)h/MAXSPRITEHEIGHT);
     ImGui::Image((void*)sprites[i].textureId,size,ImVec2(0,0),maxTex);

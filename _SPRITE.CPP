@@ -10,12 +10,19 @@
 #define XRES 640
 #define YRES 480
 
+/*
+#define VIDEO
+#define VIDEOPATH "C:\\frames\\%04d.jpg"
+int videoFrame=0;
+bool recordVideo=false;
+*/
+
 #define MINSPRITEWIDTH 1
 #define MAXSPRITEWIDTH 96
 #define MINSPRITEHEIGHT 1
 #define MAXSPRITEHEIGHT 96
 #define MINSPRITEZOOM 1.0
-#define MAXSPRITEZOOM 10
+#define MAXSPRITEZOOM 20
 #define MAXPALETTECOLORS 256
 #define MAXPALETTESLOTS 8
 #define TOOLSIZEMIN 1
@@ -25,6 +32,7 @@
 
 bool askForQuit = false;
 bool quit = false;
+bool someError = false;
 
 extern double mouseX, mouseY;
 extern double mouseDeltaX, mouseDeltaY;
@@ -307,6 +315,7 @@ enum {
   LoadSave_ExportPalette = 10,
   LoadSave_ImportSpriteAtlas = 11,
   LoadSave_ExportSprites = 12,
+  LoadSave_ExportSpritesCounter = 13,
 };
 
 int loadSave = LoadSave_None;
@@ -587,7 +596,7 @@ void doScreenShot(const char *fileName) {
   img.data = glFrameBuffer;
   img = img.getResized(img.height*16.0/9.0,img.height);
   for (int i = 0; i < img.width*img.height;i++) img.data[i]|=0xff000000;
-  img.savePNG(fileName);
+  if (!img.savePNG(fileName)) someError = true;
   delete[] img.data;
 }
 
@@ -601,6 +610,18 @@ void render() {
       doScreenShot("scrnshot.png");
     }
   }
+#ifdef VIDEO
+  if (recordVideo) {
+    char buffer[1024];
+    sprintf(buffer,VIDEOPATH,videoFrame);
+    videoFrame++;
+    RGBAImage img;
+    img.width = glFrameBufferWidth;
+    img.height = glFrameBufferHeight;
+    img.data = glFrameBuffer;
+    img.saveJPEG(buffer);
+  }
+#endif
 }
 
 Animation &getCurrentAnimation() {return animation;}
@@ -654,7 +675,7 @@ unsigned int fromColorString(char *txt) {
 
 bool toFile(const char *fileName, void *data, int dataSize) {
   FILE *out = fopen(fileName,"wb");
-  if (out == NULL) return false;
+  if (out == NULL) {someError = true; return false;}
   fwrite(data,1,dataSize,out);
   fclose(out);
   return true;
@@ -662,7 +683,7 @@ bool toFile(const char *fileName, void *data, int dataSize) {
 
 bool fromFile(const char *fileName, void *data, int dataSize) {
   FILE *in = fopen(fileName,"rb");
-  if (in == NULL) return false;
+  if (in == NULL) {someError = true; return false;}
   fread(data,1,dataSize,in);
   fclose(in);
   return true;
@@ -670,7 +691,7 @@ bool fromFile(const char *fileName, void *data, int dataSize) {
 
 bool saveSprite(const char *fileName) {
   FILE *out = fopen(fileName,"wb");
-  if (out == NULL) return false;
+  if (out == NULL) {someError = true; return false;}
   unsigned char w = getCurrentSprite().width;
   unsigned char h = getCurrentSprite().height;
   char s1 = 'S';
@@ -690,7 +711,7 @@ bool saveSprite(const char *fileName) {
 
 bool loadSprite(const char *fileName) {
   FILE *in = fopen(fileName,"rb");
-  if (in == NULL) return false;
+  if (in == NULL) {someError = true; return false;}
   char s1,s2;
   unsigned char w,h;
   fread(&s1,1,1,in);
@@ -714,9 +735,9 @@ bool loadSprite(const char *fileName) {
 
 bool importSprite(const char *fileName) {
   RGBAImage img = RGBAImage::fromFile(fileName);
-  if (img.data == NULL) return false;
-  if (img.width > MAXSPRITEWIDTH) return false;
-  if (img.height > MAXSPRITEHEIGHT) return false;
+  if (img.data == NULL)  {someError = true; return false;}
+  if (img.width > MAXSPRITEWIDTH) {someError = true; return false;}
+  if (img.height > MAXSPRITEHEIGHT) {someError = true; return false;}
   getCurrentSprite().width = img.width;
   getCurrentSprite().height = img.height;
   for (int y = 0; y < img.height; y++) {
@@ -738,13 +759,13 @@ bool exportSprite(const char *fileName) {
   img.data = &getCurrentSprite().bitmap[0];
   String fName = String(fileName);
   if (fName.find(".")<0) fName += ".png";
-  img.savePNG(fName.c_str());
-  return true;
+  if (!img.savePNG(fName.c_str())) someError = true;
+  return !someError;
 }
 
 bool importPalette(const char *fileName) {
   RGBAImage img = RGBAImage::fromFile(fileName);
-  if (img.data == NULL) return false;
+  if (img.data == NULL) {someError = true; return false;}
   int index = 0;
   for (int y = 0; y < img.height; y++) {
     for (int x = 0; x < img.width; x++) {
@@ -787,14 +808,14 @@ bool exportPalette(const char *fileName) {
         img.data[x+y*img.width] = p.colors[index];
     }
   }
-  img.savePNG(fName.c_str());
+  if (!img.savePNG(fName.c_str()))  someError = true;
   delete[] img.data;
-  return true;
+  return !someError;
 }
 
 bool saveSpriteSheet(const char *fileName) {
   FILE *out = fopen(fileName,"wb");
-  if (out == NULL) return false;
+  if (out == NULL) {someError = true; return false;}
   char s1 = 'S';
   char s2 = 'S';
   fwrite(&s1,1,1,out);
@@ -827,12 +848,12 @@ bool saveSpriteSheet(const char *fileName) {
 
 bool loadSpriteSheet(const char *fileName) {
   FILE *in = fopen(fileName,"rb");
-  if (in == NULL) return false;
+  if (in == NULL) {someError = true; return false;}
   char s1,s2;
   unsigned char w,h;
   fread(&s1,1,1,in);
   fread(&s2,1,1,in);
-  if (s1 != 'S' || s2 != 'S') return false;
+  if (s1 != 'S' || s2 != 'S') {someError = true; return false;}
   unsigned short count=0;
   fread(&count,1,2,in);
   sprites.clear();
@@ -847,11 +868,11 @@ bool loadSpriteSheet(const char *fileName) {
     unsigned char w,h;
     fread(&s1,1,1,in);
     fread(&s2,1,1,in);
-    if (s1 != 'S' || s2 != 'P') return false;
+    if (s1 != 'S' || s2 != 'P') {someError = true; return false;}
     fread(&w,1,1,in);
     fread(&h,1,1,in);
-    if (w > MAXSPRITEWIDTH) return false;
-    if (h > MAXSPRITEHEIGHT) return false;
+    if (w > MAXSPRITEWIDTH) {someError = true; return false;}
+    if (h > MAXSPRITEHEIGHT) {someError = true; return false;}
     sprites[i].width = w;
     sprites[i].height = h;
     for (int y = 0; y < h; y++) {
@@ -946,6 +967,9 @@ void displayMenuBar() {
         if (ImGui::MenuItem("Save sprite sheet")) loadSave = LoadSave_SaveSpriteSheet;
         ImGui::Separator();
         if (ImGui::MenuItem("Save screenshot")) makeScreenShot = 2;
+#ifdef VIDEO
+        if (ImGui::MenuItem("Record video")) {videoFrame=0;recordVideo=true;}
+#endif
         ImGui::Separator();
         if (ImGui::MenuItem("Quit")) {
           askForQuit = true;
@@ -1053,6 +1077,7 @@ void displayMenuBar() {
       if (ImGui::BeginMenu("Sprites")) {
         if (ImGui::MenuItem("Import sprite atlas [png]")) loadSave = LoadSave_ImportSpriteAtlas;
         if (ImGui::MenuItem("Export sprite sheet [png]")) loadSave = LoadSave_ExportSprites;
+        if (ImGui::MenuItem("Export sprites [pngs/counter]")) loadSave = LoadSave_ExportSpritesCounter;
         ImGui::Separator();
         if (ImGui::MenuItem("Quantize colors of all sprites")) quantizeAll();
         ImGui::Separator();
@@ -2172,7 +2197,7 @@ void displayColorPicker() {
 
 bool importSpriteAtlas(const char *fileName) {
   RGBAImage img = RGBAImage::fromFile(fileName);
-  if (img.data == NULL) return false;
+  if (img.data == NULL) {someError = true; return false;}
 
   unsigned int textureId;
   glGenTextures(1, &textureId);
@@ -2352,7 +2377,7 @@ HashMap<int,String> currentPaths;
 RGBAImage loadMyFormats(const char *fileName) {
   RGBAImage r;
   FILE *in = fopen(fileName,"rb");
-  if (in == NULL) return r; //img.data is NULL
+  if (in == NULL) {someError = true;return r;} //img.data is NULL
   unsigned char s1,s2;
   fread(&s1,1,1,in);
   fread(&s2,1,1,in);
@@ -2463,8 +2488,35 @@ void exportSprites(const char *fileName) {
       }
     }
   }}
-  img.savePNG(fName.c_str());
+  if (!img.savePNG(fName.c_str())) someError = true;
   delete[] data;
+}
+
+bool exportSpritesCounter(const char *fileName) {
+  String path = getPath(String(fileName));
+  String name = getName(String(fileName));
+  if (name.size()>4) name.resize(4);
+  RGBAImage img;
+  for(int i = 0; i < sprites.size(); i++) {
+    img.width = sprites[i].width;
+    img.height = sprites[i].height;
+    img.data = new unsigned int[img.width*img.height];
+    for(int y = 0; y < img.height; y++) {
+      for(int x = 0; x < img.width; x++) {
+        img.data[x+y*img.width] = sprites[i].bitmap[x+y*MAXSPRITEWIDTH];
+      }
+    }
+    char buffer[10];
+    sprintf(buffer,"%04d",i);
+    String fileName2 = path+name+String(buffer)+".png";
+    if (!img.savePNG(fileName2.c_str())) {
+      someError = true;
+      delete[] img.data;
+      return false;
+    }
+    delete[] img.data;
+  }
+  return true;
 }
 
 unsigned int previewPictureId=0;
@@ -2500,6 +2552,7 @@ void displayLoadSave() {
 
   bool isLoading = true;
   switch(loadSave) {
+  case LoadSave_ExportSpritesCounter:
   case LoadSave_ExportSprites:
   case LoadSave_ExportPalette:
   case LoadSave_ExportSprite:
@@ -2573,6 +2626,7 @@ void displayLoadSave() {
     case LoadSave_ExportPalette: {exportPalette(fname.c_str());} break;
     case LoadSave_ImportSpriteAtlas: {importSpriteAtlas(fname.c_str());} break;
     case LoadSave_ExportSprites: {exportSprites(fname.c_str());} break;
+    case LoadSave_ExportSpritesCounter: {exportSpritesCounter(fname.c_str());} break;
     }
   }
 
@@ -3100,6 +3154,24 @@ void displayCopySprites() {
   modalMode = MODAL_NONE;
 }
 
+void displaySomeError() {
+  bool finished = false;
+  bool first = true;
+  do
+  {
+    ImGuiNewFrame();
+    if (first) ImGui::SetNextWindowPos(ImVec2(0,0));
+    first = false;
+    ImGui::Begin("Some Error##SomeError55");
+    ImGui::Text("!!Some Error happened!!\nThis may be a file write/read error,\nor something other that\ndidn't go well.\nMaybe sprite size too big?");
+    if (ImGui::Button("Ok##Proceed55")) finished = true;
+    ImGui::End();
+    render();
+    glRefresh();
+  } while(!finished);
+  someError = false;
+}
+
 
 int main(int argc, char **argv) {
   if (!glVesa(XRES,YRES,32)) {
@@ -3151,6 +3223,7 @@ int main(int argc, char **argv) {
       displayCopySprites();
     displayQuitBox();      
 
+    if (someError) displaySomeError();
     render();
 
     glRefresh();

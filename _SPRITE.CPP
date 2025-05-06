@@ -7,6 +7,7 @@
 #include "psdimage.hpp"
 #include <stdio.h>
 #include <math.h>
+#include <i86.h>
 
 #define XRES 640
 #define YRES 480
@@ -344,6 +345,7 @@ public:
   bool doublePixel;
   bool showAlpha;
   bool paintMirrored;
+  bool mirroredMode;
   SpriteCanvas() {
     spriteNr = 0;
     zoom = 5.f;
@@ -353,6 +355,7 @@ public:
     doublePixel = false;
     showAlpha = false;
     paintMirrored = false;
+    mirroredMode = false;
   }
 };
 
@@ -997,6 +1000,9 @@ void newWorkSpace() {
 
 int coordX = 0;
 int coordY = 0;
+int mouseDelay = 0;
+bool showAbout = false;
+#define MOUSEDELAY 5
 void displayMenuBar() {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10,1));
     ImGui::PushStyleColor(ImGuiCol_MenuBarBg,ImVec4(0xff/255.f,0xff/255.f,0xff/255.f,0xff/255.f));
@@ -1139,18 +1145,34 @@ void displayMenuBar() {
         if (ImGui::MenuItem("Palettize colors of all sprites")) quantizeAll();
         ImGui::Separator();
         bool &db = getCurrentSpriteCanvas().doublePixel;
-        if (db && ImGui::MenuItem("Turn double pixels off##DoublePixelsOnOff")) {
+        if (db && ImGui::MenuItem("Turn double pixels off##DoublePixelsOnOff1")) {
           db = !db;
+          mouseDelay=MOUSEDELAY;
         } else                                                                
-        if ((!db) && ImGui::MenuItem("Turn double pixels on##DoublePixelsOnOff")) {
+        if ((!db) && ImGui::MenuItem("Turn double pixels on##DoublePixelsOnOff2")) {
           db = !db;
+          mouseDelay=MOUSEDELAY;
+        }
+        bool &mr = getCurrentSpriteCanvas().mirroredMode;
+        if (mr && ImGui::MenuItem("Turn mirrored mode off##MirroredModeOnOff1")) {
+          mr = !mr;
+          mouseDelay=MOUSEDELAY;
+        } else                                                                
+        if ((!mr) && ImGui::MenuItem("Turn mirrored mode on##MirroredModeOnOff2")) {
+          mr = !mr;
+          mouseDelay=MOUSEDELAY;
         }
         ImGui::Separator();
-        if (ImGui::MenuItem("Delete sprites")) modalMode=MODAL_DELETESPRITES;
-        if (ImGui::MenuItem("Copy sprites")) modalMode=MODAL_COPYSPRITES;
+        if (ImGui::MenuItem("Delete sprites")) {modalMode=MODAL_DELETESPRITES; mouseDelay=MOUSEDELAY;}
+        if (ImGui::MenuItem("Copy sprites")) {modalMode=MODAL_COPYSPRITES; mouseDelay=MOUSEDELAY;}
         ImGui::EndMenu();
       }
-      ImGui::Text("\t\t\t\t\t\t\t%02d|%02d %s  FPS/%d",coordX,coordY,currentTimeString().c_str(),(int)fps);
+      if (ImGui::BeginMenu("Info")) {
+        if (ImGui::MenuItem("About")) {showAbout = true; mouseDelay=MOUSEDELAY;}
+        ImGui::EndMenu();
+      }
+      ImGui::Text("\t\t\t\t\t%02d|%02d %s  FPS/%d",coordX,coordY,currentTimeString().c_str(),(int)fps);
+
       ImGui::EndMainMenuBar();
     }
     ImGui::PopStyleColor();
@@ -2204,15 +2226,19 @@ void displaySpriteEditField() {
     ImGui::SameLine();
     ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
     ImGui::PopStyleVar();
-    ImGui::Checkbox("Mirror",&getCurrentSpriteCanvas().paintMirrored);
-    if (getCurrentSpriteCanvas().paintMirrored) {
-      ImGui::Checkbox("Mirror X##MirrorX88",&getCurrentSprite().mirrorPaintX);
-      if (getCurrentSprite().mirrorPaintX) ImGui::InputInt("X##CenterX88",&getCurrentSprite().mirrorXPos);
-      ImGui::Checkbox("Mirror Y##MirrorY88",&getCurrentSprite().mirrorPaintY);
-      if (getCurrentSprite().mirrorPaintY) ImGui::InputInt("Y##CenterY88",&getCurrentSprite().mirrorYPos);
+    if (getCurrentSpriteCanvas().mirroredMode) {
+      ImGui::Checkbox("Mirror",&getCurrentSpriteCanvas().paintMirrored);
+      if (getCurrentSpriteCanvas().paintMirrored) {
+        ImGui::Checkbox("Mirror X##MirrorX88",&getCurrentSprite().mirrorPaintX);
+        if (getCurrentSprite().mirrorPaintX) ImGui::InputInt("X##CenterX88",&getCurrentSprite().mirrorXPos);
+        ImGui::Checkbox("Mirror Y##MirrorY88",&getCurrentSprite().mirrorPaintY);
+        if (getCurrentSprite().mirrorPaintY) ImGui::InputInt("Y##CenterY88",&getCurrentSprite().mirrorYPos);
+      }
+      getCurrentSprite().mirrorXPos=clamp(doublePixel(getCurrentSprite().mirrorXPos),1,getCurrentSprite().width-2);
+      getCurrentSprite().mirrorYPos=clamp(getCurrentSprite().mirrorYPos,1,getCurrentSprite().height-2);
+    } else {
+      getCurrentSpriteCanvas().paintMirrored = false;
     }
-    getCurrentSprite().mirrorXPos=clamp(doublePixel(getCurrentSprite().mirrorXPos),1,getCurrentSprite().width-2);
-    getCurrentSprite().mirrorYPos=clamp(getCurrentSprite().mirrorYPos,1,getCurrentSprite().height-2);
   ImGui::EndChild();
   ImDrawList *l = ImGui::GetWindowDrawList();
   l->AddRect(cp0,cp1,0xff202020,0);
@@ -2249,7 +2275,10 @@ void displaySpriteEditField() {
   lastMy = toolMousePosY;
   before = getCurrentSprite().bitmap;
 
-  handleTool(toolMousePosX,toolMousePosY);
+  if (mouseDelay<=0) {
+    mouseDelay=0;
+    handleTool(toolMousePosX,toolMousePosY);
+  } else {mouseDelay--;}
 
   if (getCurrentSpriteCanvas().paintMirrored) {
     if (getCurrentSprite().mirrorPaintX) {
@@ -3597,6 +3626,47 @@ void displaySomeError() {
   someError = false;
 }
 
+struct meminfo {
+    unsigned LargestBlockAvail;
+    unsigned MaxUnlockedPage;
+    unsigned LargestLockablePage;
+    unsigned LinAddrSpace;
+    unsigned NumFreePagesAvail;
+    unsigned NumPhysicalPagesFree;
+    unsigned TotalPhysicalPages;
+    unsigned FreeLinAddrSpace;
+    unsigned SizeOfPageFile;
+    unsigned Reserved[3];
+} MemInfo;
+
+void displayAbout() {
+
+  union REGS regs;
+  struct SREGS sregs;
+
+  regs.x.eax = 0x00000500;
+  memset( &sregs, 0, sizeof(sregs) );
+  sregs.es = FP_SEG( &MemInfo );
+  regs.x.edi = FP_OFF( &MemInfo );
+
+  int386x( 0x31, &regs, &regs, &sregs );
+
+  bool finished = false;
+  bool first = true;
+  do
+  {
+    ImGuiNewFrame();
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
+    first = false;
+    ImGui::Begin("About##ShowAbout99");
+    ImGui::Text("_sprite.exe\n(c)2025 by Stefan Mader\nUses a converted ImGui.\n\nFree memory peak:%dKB",MemInfo.LargestBlockAvail/1024);
+    if (ImGui::Button("Ok##Proceed99")) finished = true;
+    ImGui::End();
+    render();
+    glRefresh();
+  } while(!finished);
+  showAbout = false;
+}
 
 int main(int argc, char **argv) {
   if (!glVesa(XRES,YRES,32)) {
@@ -3631,6 +3701,7 @@ int main(int argc, char **argv) {
     }
     lastFrameSecond = second;
 
+    displayMenuBar();
     displaySpriteEditField();
     displayToolWindow();
     displayColorPicker();
@@ -3638,7 +3709,8 @@ int main(int argc, char **argv) {
     displayAnimation();
     displayTestBox();
     displaySpriteSheet();
-    displayMenuBar();
+    if (showAbout)
+      displayAbout();
     displayLoadSave();
     if (modalMode == MODAL_RESIZESPRITE) 
       displayResizeSprite();

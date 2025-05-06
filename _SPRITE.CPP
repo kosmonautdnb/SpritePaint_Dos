@@ -1,3 +1,6 @@
+// -----
+// _sprite.exe (c)2025 by Stefan Mader (MIT-License)
+// -----
 #include "gl.h"
 #include "imguigl.hpp"
 #include "array.hpp"
@@ -33,18 +36,23 @@ bool recordVideo=false;
 #define MOUSESPEEDMIN 0.25
 #define MOUSESPEEDMAX 2.0
 
-bool askForQuit = false;
-bool quit = false;
-bool someError = false;
-
 extern double mouseX, mouseY;
-extern double mouseDeltaX, mouseDeltaY;
 extern double mouseSpeed;
 extern int mouseButtons;              
-extern int currentKey;
-double fps;
 #define _WIDTH(__x__) ((__x__)*XRES/640)
 #define _HEIGHT(__y__) ((__y__)*YRES/480)
+bool initGraphics() {
+  return glVesa(XRES,YRES,32);
+}
+void refreshGraphics() {
+  glRefresh();
+}
+void closeGraphics() {
+  glDone();
+}
+double timeInSeconds() {
+  return glSeconds();
+}
 
 unsigned int defaultPal[]={
      0x00000000,
@@ -307,6 +315,9 @@ unsigned int defaultPal[]={
 };
 #define M_PI 3.14159265358979323846
 
+bool askForQuit = false;
+bool quit = false;
+bool someError = false;
 
 enum {  
   LoadSave_None = 0,
@@ -1003,6 +1014,8 @@ int coordY = 0;
 int mouseDelay = 0;
 bool showAbout = false;
 #define MOUSEDELAY 5
+double fps=0;
+
 void displayMenuBar() {
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10,1));
     ImGui::PushStyleColor(ImGuiCol_MenuBarBg,ImVec4(0xff/255.f,0xff/255.f,0xff/255.f,0xff/255.f));
@@ -1186,16 +1199,23 @@ void displayQuitBox() {
     ImGui::SetNextWindowFocus();
     ImGui::SetNextWindowPos(ImVec2((XRES-_WIDTH(50))/2,(YRES-_HEIGHT(40))/2));
     ImGui::Begin("Quit?",NULL,ImVec2(_WIDTH(50),_HEIGHT(40)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoCollapse);
-    if(ImGui::Button("Yes") || currentKey == 'y' || currentKey == GL_VK_ENTER) {
+    if(ImGui::Button("Yes") || ImGui::IsKeyDown('y') || ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Enter])) {
+      ImGui::GetIO().KeysDown['y'] = 0;
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Enter]] = 0;
       quit = true;
     }
     ImGui::SameLine();
-    if(ImGui::Button("No") || currentKey == 'n' || currentKey == GL_VK_ESCAPE) {
+    if(ImGui::Button("No") || ImGui::IsKeyDown('n') || ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown['n'] = 0;
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
       askForQuit = false;
     }
     ImGui::End();
   } else {
-    if (currentKey == GL_VK_ESCAPE) askForQuit = true;
+    if (ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      askForQuit = true;
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
+    }
   }
 }
 
@@ -2202,8 +2222,8 @@ void displaySpriteEditField() {
   if (ImGui::Checkbox("BG",&getCurrentSpriteCanvas().background)) {updateAll();}
   ImGui::SameLine();
   if (ImGui::Checkbox("Alpha",&getCurrentSpriteCanvas().showAlpha)) {updateAll();}
-  if (currentKey == '+') getCurrentSpriteCanvas().zoom += 1.0;
-  if (currentKey == '-') getCurrentSpriteCanvas().zoom -= 1.0;
+  if (ImGui::IsKeyDown('+')) {getCurrentSpriteCanvas().zoom += 1.0; ImGui::GetIO().KeysDown['+'] = 0;}
+  if (ImGui::IsKeyDown('-')) {getCurrentSpriteCanvas().zoom -= 1.0; ImGui::GetIO().KeysDown['-'] = 0;}
   getCurrentSpriteCanvas().zoom = clamp(getCurrentSpriteCanvas().zoom,(float)MINSPRITEZOOM,(float)MAXSPRITEZOOM);
   ImGui::PopItemWidth();
   ImVec2 windowSize = ImGui::GetWindowSize();
@@ -2535,6 +2555,7 @@ bool importSpriteAtlas(const char *fileName) {
     if (lastSpriteNr<firstSpriteNr) lastSpriteNr = firstSpriteNr;
     ImGui::PopItemWidth();
     if (ImGui::Button("Cancel##Cancel10")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
       finished = true;
     }
     ImGui::SameLine();
@@ -2574,12 +2595,11 @@ bool importSpriteAtlas(const char *fileName) {
     }
     ImGui::End();
     render();
-    glRefresh();
+    refreshGraphics();
   } while(!finished);
 
   delete[] img.data;
   glDeleteTextures(1, &textureId);
-  currentKey = 0;
 
   return true;
 }
@@ -2740,6 +2760,7 @@ bool importSpritesCounter(const char *fileName) {
     firstSprite = clamp(firstSprite,0,9999);
     lastSprite = clamp(lastSprite,firstSprite,9999);
     if (ImGui::Button("Cancel##Cancel66")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
       finished = true;
     }
     ImGui::SameLine();
@@ -2781,7 +2802,7 @@ bool importSpritesCounter(const char *fileName) {
     ImGui::End();
     render();
   
-    glRefresh();
+    refreshGraphics();
   } while(!finished);
   return true;
 }
@@ -2912,6 +2933,7 @@ bool importPSDLayers(const char *fileName) {
     layer0 = clamp(layer0,0,img.NumLayers()-1);
     layerN = clamp(layerN,layer0,img.NumLayers()-1);
     if (ImGui::Button("Cancel##Cancel77")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
       finished = true;
     }
     ImGui::SameLine();
@@ -2951,7 +2973,7 @@ bool importPSDLayers(const char *fileName) {
     ImGui::End();
     render();
   
-    glRefresh();
+    refreshGraphics();
   } while(!finished);
 
    if (textureId != 0) glDeleteTextures(1,&textureId);
@@ -3043,12 +3065,12 @@ void displayLoadSave() {
 
     render();
 
-    glRefresh();
+    refreshGraphics();
   } while(!finished);
 
   ImGui::PopStyleColor();
+  ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
   
-  currentKey = 0;
   currentPaths[loadSave] = f->getCurrentPath();
 
   String fname = f->getSelectedFileName();
@@ -3150,8 +3172,11 @@ void displayToolWindow() {
   }
   if (t == TOOL_RECT) {ImGui::Checkbox("Filled##Filled1",&getCurrentTool().filled);}
   if (t == TOOL_CIRCLE) {ImGui::Checkbox("Filled##Filled2",&getCurrentTool().filled);}
-  if (t == TOOL_MOVE) {if (ImGui::Button("FlipX##FlipX1")||currentKey=='x') flipClipBoardX();  ImGui::SameLine(); if (ImGui::Button("FlipY##FlipY1")||currentKey=='y') flipClipBoardY();}
-  if (t == TOOL_COPY) {if (ImGui::Button("FlipX##FlipX2")||currentKey=='x') flipClipBoardX();  ImGui::SameLine(); if (ImGui::Button("FlipY##FlipY2")||currentKey=='y') flipClipBoardY();}
+  if (t == TOOL_MOVE || t == TOOL_COPY) {
+    if (ImGui::Button("FlipX##FlipX1")||ImGui::IsKeyDown('x')) {ImGui::GetIO().KeysDown['x'] = 0; flipClipBoardX();}
+    ImGui::SameLine(); 
+    if (ImGui::Button("FlipY##FlipY1")||ImGui::IsKeyDown('y')) {ImGui::GetIO().KeysDown['y'] = 0;flipClipBoardY();}
+  }
   if (t == TOOL_RECOLOR) {
     if (ImGui::Button("Colorize")) {
       for (int y = 0; y < getCurrentSprite().height; y++) {
@@ -3491,6 +3516,7 @@ void displayResizeSprite() {
     newSizeX = clamp(newSizeX,1,MAXSPRITEWIDTH);
     newSizeY = clamp(newSizeY,1,MAXSPRITEHEIGHT);
     if (ImGui::Button("Cancel##Cancel11")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
       finished = true;
     }             
     ImGui::SameLine();
@@ -3520,7 +3546,7 @@ void displayResizeSprite() {
     ImGui::End();
     render();
   
-    glRefresh();
+    refreshGraphics();
   } while(!finished);
   modalMode = MODAL_NONE;
 }
@@ -3543,6 +3569,7 @@ void displayDeleteSprites() {
     deleteStartSprite = clamp(deleteStartSprite,0,(int)sprites.size()-1);
     deleteEndSprite = clamp(deleteEndSprite,deleteStartSprite,(int)sprites.size()-1);
     if (ImGui::Button("Cancel##Cancel22")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
       finished = true;
     }             
     ImGui::SameLine();
@@ -3553,7 +3580,7 @@ void displayDeleteSprites() {
     ImGui::End();
     render();
   
-    glRefresh();
+    refreshGraphics();
   } while(!finished);
   modalMode = MODAL_NONE;
 }
@@ -3579,6 +3606,7 @@ void displayCopySprites() {
     copyEndSprite = clamp(copyEndSprite,copyStartSprite,(int)sprites.size()-1);
     spriteNr = clamp(spriteNr,0,(int)sprites.size());
     if (ImGui::Button("Cancel##Cancel33")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
       finished = true;
     }             
     ImGui::SameLine();
@@ -3603,7 +3631,7 @@ void displayCopySprites() {
     ImGui::End();
     render();
   
-    glRefresh();
+    refreshGraphics();
   } while(!finished);
   modalMode = MODAL_NONE;
 }
@@ -3621,7 +3649,7 @@ void displaySomeError() {
     if (ImGui::Button("Ok##Proceed55")) finished = true;
     ImGui::End();
     render();
-    glRefresh();
+    refreshGraphics();  
   } while(!finished);
   someError = false;
 }
@@ -3663,14 +3691,14 @@ void displayAbout() {
     if (ImGui::Button("Ok##Proceed99")) finished = true;
     ImGui::End();
     render();
-    glRefresh();
+    refreshGraphics();    
   } while(!finished);
   showAbout = false;
 }
 
 int main(int argc, char **argv) {
-  if (!glVesa(XRES,YRES,32)) {
-    printf("No Vesa Mode 640x480 with 32Bit found.\n");
+  if (!initGraphics()) {
+    printf("No Vesa Mode %dx%d with 32Bit found.\n",XRES,YRES);
     exit(0);
   }
   InitImGui(XRES, YRES);
@@ -3682,8 +3710,8 @@ int main(int argc, char **argv) {
   {
     ImGuiNewFrame();
 
-    static double lastFPSClock = glSeconds();
-    double fpsClock = glSeconds();
+    static double lastFPSClock = timeInSeconds();
+    double fpsClock = timeInSeconds();
     static int fpsCounter=0;
     fpsCounter++;
     if (fpsClock-lastFPSClock>1.0) {
@@ -3692,8 +3720,8 @@ int main(int argc, char **argv) {
       fpsCounter = 0;
     }
 
-    static double lastFrameSecond = glSeconds();
-    double second = glSeconds();
+    static double lastFrameSecond = timeInSeconds();
+    double second = timeInSeconds();
     if (getCurrentAnimation().playing) {
       getCurrentAnimation().playPos += (second-lastFrameSecond)*getCurrentAnimation().speed;
       getCurrentSpriteCanvas().spriteNr = getCurrentAnimation().playedFrame;
@@ -3723,9 +3751,10 @@ int main(int argc, char **argv) {
     if (someError) displaySomeError();
     render();
 
-    glRefresh();
+    refreshGraphics();
   } while(!quit);
-  glDone();
+
+  closeGraphics();
 
   return 0;
 }

@@ -304,6 +304,8 @@ unsigned int defaultPal[]={
      0xff4d3498,
      0xff371491, // not taken because of transparent color at start
 };
+#define M_PI 3.14159265358979323846
+
 
 enum {  
   LoadSave_None = 0,
@@ -340,6 +342,7 @@ public:
   bool gridOn;
   bool background;
   bool doublePixel;
+  bool showAlpha;
   SpriteCanvas() {
     spriteNr = 0;
     zoom = 5.f;
@@ -347,6 +350,7 @@ public:
     gridOn = false;
     background = false;
     doublePixel = false;
+    showAlpha = false;
   }
 };
 
@@ -388,6 +392,7 @@ public:
       glGenTextures(1, &textureId);
       glBindTexture(GL_TEXTURE_2D, textureId);
       bool bg = getCurrentSpriteCanvas().background;
+      bool alpha = getCurrentSpriteCanvas().showAlpha;
        for (int i = 0; i < MAXSPRITEWIDTH*MAXSPRITEHEIGHT; i++) {
         int r1 = (bitmap[i]>>0) & 255;
         int g1 = (bitmap[i]>>8) & 255;
@@ -404,6 +409,9 @@ public:
         temp[i] = r|(g<<8)|(b<<16)|(a<<24);
         if (bg && ((temp[i]>>24)<2)) {
           temp[i] = ((((i+i/MAXSPRITEWIDTH) % 3)+1)*0x00202020)|0xff000000;
+        }
+        if (alpha) {
+          temp[i] = a|(a<<8)|(a<<16)|0xff000000;
         }
       }
       glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,MAXSPRITEWIDTH,MAXSPRITEHEIGHT,0,GL_RGBA,GL_UNSIGNED_BYTE,temp);
@@ -474,6 +482,7 @@ unsigned int modalMode = MODAL_NONE;
 #define TOOL_SCALE 8
 #define TOOL_ROTATE 9
 #define TOOL_RECOLOR 10
+#define TOOL_SETALPHA 11
 
 class Tool {
 public:
@@ -487,6 +496,7 @@ public:
   int tool;
   unsigned int color0;
   unsigned int color1;
+  int alpha;
   Tool() {
     size = 1.f;
     angle = 0.f;
@@ -501,6 +511,7 @@ public:
     filled = true;
     color0 = 0xff000000;
     color1 = 0xff000000;
+    alpha = 0;
   }
   char *getName() {
     switch(tool) {
@@ -514,6 +525,7 @@ public:
     case TOOL_SCALE: return "Scale";
     case TOOL_ROTATE: return "Transform";
     case TOOL_RECOLOR: return "ReColor";
+    case TOOL_SETALPHA: return "SetAlpha";
     };
     return "<NONE>";
   }
@@ -1117,10 +1129,10 @@ void displayMenuBar() {
         if (ImGui::MenuItem("Quantize colors of all sprites")) quantizeAll();
         ImGui::Separator();
         bool &db = getCurrentSpriteCanvas().doublePixel;
-        if (db && ImGui::MenuItem("Double pixels off##DoublePixelsOnOff")) {
+        if (db && ImGui::MenuItem("Turn double pixels off##DoublePixelsOnOff")) {
           db = !db;
         } else                                                                
-        if ((!db) && ImGui::MenuItem("Double pixels on##DoublePixelsOnOff")) {
+        if ((!db) && ImGui::MenuItem("Turn double pixels on##DoublePixelsOnOff")) {
           db = !db;
         }
         ImGui::Separator();
@@ -1128,7 +1140,7 @@ void displayMenuBar() {
         if (ImGui::MenuItem("Copy sprites")) modalMode=MODAL_COPYSPRITES;
         ImGui::EndMenu();
       }
-      ImGui::Text("\t\t\t\t\t\t\t%02d:%02d %s  FPS/%d",coordX,coordY,currentTimeString().c_str(),(int)fps);
+      ImGui::Text("\t\t\t\t\t\t\t%02d|%02d %s  FPS/%d",coordX,coordY,currentTimeString().c_str(),(int)fps);
       ImGui::EndMainMenuBar();
     }
     ImGui::PopStyleColor();
@@ -1164,18 +1176,21 @@ int doublePixel(int mx) {
 void plot(unsigned int *dest, int x, int y, unsigned int col) {
   int w = getCurrentSprite().width;
   int h = getCurrentSprite().height;
-  double toolSize = getCurrentTool().size;
-  for (double radius = 0; radius < toolSize*0.5; radius += 0.5) {
-    double u = 4 * radius * 3.1415927;
-    for (double angle = 0; angle < 2.f * 3.1415927; angle += 2.f * 3.1415927/u) {
-      int nx = sin(angle)*radius+x;
-      int ny = cos(angle)*radius+y;
-      if (nx >= 0 && ny >= 0 && nx < w && ny < h) {
-        if (getCurrentSpriteCanvas().doublePixel) {
-          dest[doublePixel(nx)+ny*MAXSPRITEWIDTH] = col;
-          dest[doublePixel(nx)+1+ny*MAXSPRITEWIDTH] = col;
-        } else {
-          dest[nx+ny*MAXSPRITEWIDTH] = col;
+  double toolSize = getCurrentTool().size*0.5;
+
+  for (int y2 = y - toolSize-1; y2 <= y + toolSize+1; y2++) {
+    for (int x2 = x - toolSize-1; x2 <= x + toolSize+1; x2++) {
+      double dx = doublePixel(x2 - x);
+      double dy = y2 - y;
+      double d = sqrt(dx*dx+dy*dy);
+      if (d <= toolSize) {
+        if (x2 >= 0 && y2 >= 0 && x2 < w && y2 < h) {
+          if (getCurrentSpriteCanvas().doublePixel) {
+            dest[doublePixel(x2)+y2*MAXSPRITEWIDTH] = col;
+            dest[doublePixel(x2)+1+y2*MAXSPRITEWIDTH] = col;
+          } else {
+            dest[x2+y2*MAXSPRITEWIDTH] = col;
+          }
         }
       }
     }
@@ -1193,6 +1208,9 @@ void colorBehindPixel(int mx, int my) {
   }
 }
 
+int colIdx = -1;
+bool colorInputInit = true;
+
 void handleColorGet(int mx, int my) {
   int w = getCurrentSprite().width;
   int h = getCurrentSprite().height;
@@ -1201,6 +1219,7 @@ void handleColorGet(int mx, int my) {
     if (mouseButtons & 2) {
       getCurrentPalette().slot = 0;
       getCurrentPalette().slotColors[getCurrentPalette().slot] = col;
+      colorInputInit = true;
     }
   }
 }
@@ -1224,6 +1243,10 @@ void handleToolPencil(int mx, int my) {
   handleColorGet(mx,my);
   static int lastMx = mx;
   static int lastMy = my;
+  if (toolWas != TOOL_PENCIL || (mouseButtons & 2)) {
+    lastMx = mx;
+    lastMy = my;
+  }
   int w = getCurrentSprite().width;
   int h = getCurrentSprite().height;
   if (mx >= 0 && mx < w && my >= 0 && my < h && lastMx >= 0 && lastMx < w && lastMy >= 0 && lastMy < h) {
@@ -1435,7 +1458,7 @@ void handleToolCircle(int mx, int my) {
       } else {
         int k = 1024;
         for (int i = 0; i < k; i++) {
-          double fk = (double)i / k * 2.f * 3.1415927;
+          double fk = (double)i / k * 2.0 * M_PI;
           int x = (sin(fk)*0.5+0.5)*(endX-startX)+startX+0.5;
           int y = (cos(fk)*0.5+0.5)*(endY-startY)+startY+0.5;
           plot(overlay,x,y,col);
@@ -1473,7 +1496,7 @@ void handleToolCircle(int mx, int my) {
           unsigned int *k2 = &getCurrentSprite().bitmap[0];
           int k = 1024;
           for (int i = 0; i < k; i++) {
-            double fk = (double)i / k * 2.f * 3.1415927;
+            double fk = (double)i / k * 2.0 * M_PI;
             int x = (sin(fk)*0.5+0.5)*(endX-startX)+startX+0.5;
             int y = (cos(fk)*0.5+0.5)*(endY-startY)+startY+0.5;
             plot(k2,x,y,col);
@@ -1923,6 +1946,52 @@ void handleToolScale(int mx, int my) {
   }
 }
 
+void handleToolSetAlpha(int mx, int my) {
+  int w = getCurrentSprite().width;
+  int h = getCurrentSprite().height;
+  static int lastMx = mx;
+  static int lastMy = my;
+  if (toolWas != TOOL_SETALPHA || (mouseButtons & 2)) {
+    lastMx = mx;
+    lastMy = my;
+  }
+  if (mx >= 0 && mx < w && my >= 0 && my < h) {
+    mx = doublePixel(mx);
+
+    memset(overlay,0,sizeof(overlay));
+    plot(overlay,mx,my,0xffffffff);
+    getCurrentSprite().update();
+    getCurrentSprite().texture();
+    memset(overlay,0,sizeof(overlay));
+
+    if (mouseButtons & 2) {
+      getCurrentTool().alpha = getCurrentSprite().bitmap[mx+my*MAXSPRITEWIDTH]>>24;
+    }
+
+    if ((!(mouseButtonsWas & 1)) && (mouseButtons & 1)) makeUndoPoint();
+
+    if (mouseButtons & 1) {
+      double dx = lastMx - mx;
+      double dy = lastMy - my;
+      double d = fabs(dx);
+      if (fabs(dy)>d) d = fabs(dy);
+      if (d < 1) d = 1;
+      dx /= d;
+      dy /= d;
+      for (int i = 0; i < d+1; i++) {
+        int kx = doublePixel(mx+dx*i);
+        int ky = my+dy*i;
+        if (kx >= 0&&ky>=0&&kx<w&&ky<h)
+          getCurrentSprite().bitmap[kx+ky*MAXSPRITEWIDTH] = (getCurrentSprite().bitmap[kx+ky*MAXSPRITEWIDTH] & 0x00ffffff)|(getCurrentTool().alpha<<24);
+      }
+      getCurrentSprite().update();
+    }
+  }
+  lastMx = mx;
+  lastMy = my;
+}
+
+
 void handleToolRotate(int mx, int my) { // handleToolTransform
   int w = getCurrentSprite().width;
   int h = getCurrentSprite().height;
@@ -1999,7 +2068,7 @@ void handleToolRotate(int mx, int my) { // handleToolTransform
   if (mode == 2) {
     getCurrentTool().special = true;
     memset(overlay,0,sizeof(overlay));
-    double ang = getCurrentTool().angle*2*3.1415927/360.0;
+    double ang = getCurrentTool().angle*2.0*M_PI/360.0;
     for (int y = 0; y < getCurrentSprite().height; y++) {
       for (int x = 0; x < getCurrentSprite().width; x++) {
         double dx = floor(x - centerX+0.5);
@@ -2066,6 +2135,7 @@ void handleTool(int mx, int my) {
   case TOOL_SCALE: handleToolScale(mx,my); break;
   case TOOL_ROTATE: handleToolRotate(mx,my); break;
   case TOOL_RECOLOR:   handleColorGet(mx,my); break;
+  case TOOL_SETALPHA:   handleToolSetAlpha(mx,my); break;
   }
   toolWas = getCurrentTool().tool;
   mouseButtonsWas = mouseButtons;
@@ -2097,6 +2167,8 @@ void displaySpriteEditField() {
   ImGui::Checkbox("Grid",&getCurrentSpriteCanvas().gridOn);
   ImGui::SameLine();
   if (ImGui::Checkbox("BG",&getCurrentSpriteCanvas().background)) {updateAll();}
+  ImGui::SameLine();
+  if (ImGui::Checkbox("Alpha",&getCurrentSpriteCanvas().showAlpha)) {updateAll();}
   if (currentKey == '+') getCurrentSpriteCanvas().zoom += 1.0;
   if (currentKey == '-') getCurrentSpriteCanvas().zoom -= 1.0;
   getCurrentSpriteCanvas().zoom = clamp(getCurrentSpriteCanvas().zoom,(float)MINSPRITEZOOM,(float)MAXSPRITEZOOM);
@@ -2129,7 +2201,7 @@ void displaySpriteEditField() {
     int h = getCurrentSprite().height;
     int add = 1;
     if (getCurrentSpriteCanvas().doublePixel) add = 2;
-    for (int x = 1; x < w; x+=add) {
+    for (int x = add; x < w; x+=add) {
       int xp = x * (cp1.x-cp0.x) / w + cp0.x;
       l->AddLine(ImVec2(xp,cp0.y),ImVec2(xp,cp1.y),0x40ffffff);
     }
@@ -2145,9 +2217,6 @@ void displaySpriteEditField() {
   lastMy = toolMousePosY;
   handleTool(toolMousePosX,toolMousePosY);
 }
-
-int colIdx = -1;
-bool colorInputInit = true;
 
 void displayColorPicker() {
   static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(330))); isInit = false;
@@ -2953,7 +3022,10 @@ void displayToolWindow() {
   ImGui::Separator();
   ImGui::Text(getCurrentTool().getName());
   int t = getCurrentTool().tool;
-  if (t==TOOL_PENCIL||t==TOOL_RECT||t==TOOL_CIRCLE||t==TOOL_LINE) ImGui::SliderFloat("Pixels", &getCurrentTool().size, TOOLSIZEMIN, TOOLSIZEMAX);
+  if (t==TOOL_PENCIL||t==TOOL_RECT||t==TOOL_CIRCLE||t==TOOL_LINE) {
+    ImGui::SliderFloat("Pixels", &getCurrentTool().size, TOOLSIZEMIN, TOOLSIZEMAX);
+    ImGui::InputFloat("Pixels##Pixels2a", &getCurrentTool().size, 0.5);
+  }
   if (t==TOOL_ROTATE) {
     if (getCurrentTool().special) {
       ImGui::InputFloat("Angle",&getCurrentTool().angle,10.f); 
@@ -3011,6 +3083,10 @@ void displayToolWindow() {
       getCurrentTool().color1 = getCurrentPalette().slotColors[getCurrentPalette().slot];
     }
   }
+  if (t == TOOL_SETALPHA) {
+    ImGui::InputInt("Alpha",&getCurrentTool().alpha);
+    getCurrentTool().alpha = clamp(getCurrentTool().alpha,0,255);
+  }
   mouseSpeed = getCurrentTool().mouseSpeed;
   ImGui::PopItemWidth();
   ImGui::SetCursorPosY(118);
@@ -3024,9 +3100,11 @@ void displayToolWindow() {
     buttonActive(TOOL_MOVE); if (ImGui::Button("Move")) getCurrentTool().tool = TOOL_MOVE; buttonActiveEnd();
     buttonActive(TOOL_COPY); if (ImGui::Button("Copy")) getCurrentTool().tool = TOOL_COPY; buttonActiveEnd();
     buttonActive(TOOL_SCALE); if (ImGui::Button("Scale")) getCurrentTool().tool = TOOL_SCALE; buttonActiveEnd();
-    buttonActive(TOOL_ROTATE); if (ImGui::Button("Transform")) {Tool &t = getCurrentTool(); t.tool = TOOL_ROTATE;t.angle=0.f;t.place=false;t.special=false;t.x=0;t.y=0;t.w=1;t.h=1;} buttonActiveEnd();
     ImGui::SameLine();
+    buttonActive(TOOL_ROTATE); if (ImGui::Button("Transform")) {Tool &t = getCurrentTool(); t.tool = TOOL_ROTATE;t.angle=0.f;t.place=false;t.special=false;t.x=0;t.y=0;t.w=1;t.h=1;} buttonActiveEnd();
     buttonActive(TOOL_RECOLOR); if (ImGui::Button("Recolor")) {Tool &t = getCurrentTool(); t.tool = TOOL_RECOLOR; t.color0 = getCurrentPalette().slotColors[getCurrentPalette().slot]; t.color1 = getCurrentPalette().slotColors[getCurrentPalette().slot];} buttonActiveEnd();
+    ImGui::SameLine();
+    buttonActive(TOOL_SETALPHA); if (ImGui::Button("PixelAlpha")) {Tool &t = getCurrentTool(); t.tool = TOOL_SETALPHA;} buttonActiveEnd();
   }
   ImGui::End();
 }

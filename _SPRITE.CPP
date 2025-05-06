@@ -343,6 +343,7 @@ public:
   bool background;
   bool doublePixel;
   bool showAlpha;
+  bool paintMirrored;
   SpriteCanvas() {
     spriteNr = 0;
     zoom = 5.f;
@@ -351,6 +352,7 @@ public:
     background = false;
     doublePixel = false;
     showAlpha = false;
+    paintMirrored = false;
   }
 };
 
@@ -363,6 +365,10 @@ public:
   Array<unsigned int> bitmap;
   GLuint textureId;
   bool mark;
+  bool mirrorPaintX;
+  bool mirrorPaintY;
+  int mirrorXPos;
+  int mirrorYPos;
   Sprite() {
     bitmap.resize(MAXSPRITEWIDTH*MAXSPRITEHEIGHT);
     memset(&bitmap[0],0x00,MAXSPRITEWIDTH*MAXSPRITEHEIGHT*sizeof(unsigned int));
@@ -371,6 +377,10 @@ public:
     sprintf(name,"Not named");
     textureId = 0;
     mark = false;
+    mirrorPaintX=false;
+    mirrorPaintY=false;
+    mirrorXPos = 32;
+    mirrorYPos = 32;
   }
   void update() {
     mark = true;
@@ -1126,7 +1136,7 @@ void displayMenuBar() {
         ImGui::Separator();
         if (ImGui::MenuItem("Import layers [psd](experimental)")) loadSave = LoadSave_ImportPSDLayers;
         ImGui::Separator();
-        if (ImGui::MenuItem("Quantize colors of all sprites")) quantizeAll();
+        if (ImGui::MenuItem("Palettize colors of all sprites")) quantizeAll();
         ImGui::Separator();
         bool &db = getCurrentSpriteCanvas().doublePixel;
         if (db && ImGui::MenuItem("Turn double pixels off##DoublePixelsOnOff")) {
@@ -1959,7 +1969,7 @@ void handleToolSetAlpha(int mx, int my) {
     mx = doublePixel(mx);
 
     memset(overlay,0,sizeof(overlay));
-    plot(overlay,mx,my,0xffffffff);
+    overlay[mx+my*MAXSPRITEWIDTH] = 0xffffffff;
     getCurrentSprite().update();
     getCurrentSprite().texture();
     memset(overlay,0,sizeof(overlay));
@@ -2143,6 +2153,7 @@ void handleTool(int mx, int my) {
 
 int lastMx = 0;
 int lastMy = 0;
+Array<unsigned int> before;
 void displaySpriteEditField() {
   ImGui::SetNextWindowPos(ImVec2(_WIDTH(180),_HEIGHT(20)));
   coordX = 0;
@@ -2181,19 +2192,28 @@ void displaySpriteEditField() {
   ImVec2 size2 = ImVec2(getCurrentSprite().width,getCurrentSprite().height/getCurrentSpriteCanvas().aspect);
   ImGui::Image((void*)getCurrentSprite().texture(), size ,ImVec2(0,0),maxTex);
   ImGui::SameLine();
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(0,0));
   ImVec2 k = ImVec2(size2.x*2,size2.y*2);
   k.x += 16;
-  k.y += 16;
+  k.y += 16*6;
   ImGui::BeginChild("Tileable",k);
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(0,0));
     ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
     ImGui::SameLine();
     ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
     ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
     ImGui::SameLine();
     ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
+    ImGui::PopStyleVar();
+    ImGui::Checkbox("Mirror",&getCurrentSpriteCanvas().paintMirrored);
+    if (getCurrentSpriteCanvas().paintMirrored) {
+      ImGui::Checkbox("Mirror X##MirrorX88",&getCurrentSprite().mirrorPaintX);
+      if (getCurrentSprite().mirrorPaintX) ImGui::InputInt("X##CenterX88",&getCurrentSprite().mirrorXPos);
+      ImGui::Checkbox("Mirror Y##MirrorY88",&getCurrentSprite().mirrorPaintY);
+      if (getCurrentSprite().mirrorPaintY) ImGui::InputInt("Y##CenterY88",&getCurrentSprite().mirrorYPos);
+    }
+    getCurrentSprite().mirrorXPos=clamp(doublePixel(getCurrentSprite().mirrorXPos),1,getCurrentSprite().width-2);
+    getCurrentSprite().mirrorYPos=clamp(getCurrentSprite().mirrorYPos,1,getCurrentSprite().height-2);
   ImGui::EndChild();
-  ImGui::PopStyleVar();
   ImDrawList *l = ImGui::GetWindowDrawList();
   l->AddRect(cp0,cp1,0xff202020,0);
   if (getCurrentSpriteCanvas().gridOn) {
@@ -2210,12 +2230,68 @@ void displaySpriteEditField() {
       l->AddLine(ImVec2(cp0.x,yp),ImVec2(cp1.x,yp),0x40ffffff);
     }
   }
+  if (getCurrentSprite().mirrorPaintX && getCurrentSpriteCanvas().paintMirrored) {
+    int w = getCurrentSprite().width;
+    int h = getCurrentSprite().height;
+    int xp = getCurrentSprite().mirrorXPos * (cp1.x-cp0.x) / w + cp0.x;
+    l->AddLine(ImVec2(xp,cp0.y),ImVec2(xp,cp1.y),0x8000ffff);
+  }
+  if (getCurrentSprite().mirrorPaintY && getCurrentSpriteCanvas().paintMirrored) {
+    int w = getCurrentSprite().width;
+    int h = getCurrentSprite().height;
+    int yp = getCurrentSprite().mirrorYPos * (cp1.y-cp0.y) / h + cp0.y;
+    l->AddLine(ImVec2(cp0.x,yp),ImVec2(cp1.x,yp),0x8000ffff);
+  } 
   ImGui::End();
   int toolMousePosX = round2((double)(mouseX-cp0.x)*getCurrentSprite().width/(cp1.x-cp0.x));
   int toolMousePosY = round2((double)(mouseY-cp0.y)*getCurrentSprite().height/(cp1.y-cp0.y));
   lastMx = toolMousePosX;
   lastMy = toolMousePosY;
+  before = getCurrentSprite().bitmap;
+
   handleTool(toolMousePosX,toolMousePosY);
+
+  if (getCurrentSpriteCanvas().paintMirrored) {
+    if (getCurrentSprite().mirrorPaintX) {
+      for (int y = 0; y < getCurrentSprite().height; y++) {
+        for (int x = 0; x < getCurrentSprite().width; x++) {
+          unsigned int c0 = getCurrentSprite().bitmap[x+y*MAXSPRITEWIDTH];
+          unsigned int c1 = before[x+y*MAXSPRITEWIDTH];
+          if (c1 != c0) {
+            int x2 = -1;
+            if (toolMousePosX<getCurrentSprite().mirrorXPos && x<getCurrentSprite().mirrorXPos) 
+              x2 = (getCurrentSprite().mirrorXPos-x-1)+getCurrentSprite().mirrorXPos;
+            if (toolMousePosX>=getCurrentSprite().mirrorXPos && x>=getCurrentSprite().mirrorXPos) 
+              x2 = getCurrentSprite().mirrorXPos-(x+1-getCurrentSprite().mirrorXPos);
+            if (x2>=0&&x2<getCurrentSprite().width) {
+              getCurrentSprite().bitmap[x2+y*MAXSPRITEWIDTH]=c0;
+              getCurrentSprite().update();
+            }
+          }
+        }
+      }
+    }
+    if (getCurrentSprite().mirrorPaintY) {
+      for (int y = 0; y < getCurrentSprite().height; y++) {
+        for (int x = 0; x < getCurrentSprite().width; x++) {
+          unsigned int c0 = getCurrentSprite().bitmap[x+y*MAXSPRITEWIDTH];
+          unsigned int c1 = before[x+y*MAXSPRITEWIDTH];
+          if (c1 != c0) {
+            int y2 = -1;
+            if (toolMousePosY<getCurrentSprite().mirrorYPos && y<getCurrentSprite().mirrorYPos) 
+              y2 = (getCurrentSprite().mirrorYPos-y-1)+getCurrentSprite().mirrorYPos;
+            if (toolMousePosY>=getCurrentSprite().mirrorYPos && y>=getCurrentSprite().mirrorYPos) 
+              y2 = getCurrentSprite().mirrorYPos-(y+1-getCurrentSprite().mirrorYPos);
+            if (y2>=0&&y2<getCurrentSprite().height) {
+              getCurrentSprite().bitmap[x+y2*MAXSPRITEWIDTH]=c0;
+              getCurrentSprite().update();
+            }
+          }
+        }
+      }
+    }
+  }
+
 }
 
 void displayColorPicker() {

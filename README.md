@@ -7,6 +7,8 @@ try: _sprite.exe it's the compiled program.
 
 A video of using this tool: https://www.youtube.com/watch?v=1TvwSr7-zCg
 
+A 25 min video with a tutorial/howto: https://www.youtube.com/watch?v=8JZ11G1h4Mw
+
 I hope your computer supports Vesa 640x480x32.
 
 If you want to recompile it with WatcomC++. Also depack _build.zip in this folder and place the ramdisk in your autoexec.bat.

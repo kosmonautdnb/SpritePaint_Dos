@@ -39,6 +39,10 @@ DWORDARRAY[Width*Height] rgbaPixelData
 
 ...
 
+### Palette Format
+
+DWORDARRAY rgbacolors (max. 256 colors)
+
 ## You can create a bootable USB-Stick with FreeDos with Rufus
 
 https://rufus.ie

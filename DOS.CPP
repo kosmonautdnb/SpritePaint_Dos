@@ -1,38 +1,51 @@
+#include "types.hpp"
 #include <direct.h>
 #include "dos.hpp"
 #include <stdio.h>
 #include <io.h>
 #include <string.h>
 #include <conio.h>
+#ifndef NOT_DOS
 #include <i86.h>
+#endif
 #include <fcntl.h>
 
 String getCWD() {
-  String currentWorkingDirectory;
+#ifndef NOT_DOS
+    String currentWorkingDirectory;
   currentWorkingDirectory.resize(2048);
   getcwd(&(currentWorkingDirectory[0]),currentWorkingDirectory.length());
   currentWorkingDirectory.resize(strlen(currentWorkingDirectory.c_str()));
   return unixFileName(currentWorkingDirectory+"/");
+#else
+  return "";
+#endif
 }
 
 void disableControlBreak() {
+#ifndef NOT_DOS
   union REGS regs;
   regs.h.ah = 0x33;
   regs.h.al = 1;
   regs.h.dl = 0;
   int386(0x21, &regs, &regs);
+#endif
 }
 
 int rtcRead(int reg) {
+#ifndef NOT_DOS
   int volatile v=0;
   for (int j=1; j < 100; j++) {v++;}
   outp(0x70,reg & 0xff);
   for (int i=1; i < 100; i++) {v++;}
   return inp(0x71) & 0xff;
+#else
+  return 0;
+#endif
 }
 
 static String hex(int v) {
-  char *h="0123456789ABCDEF";
+  const char *h="0123456789ABCDEF";
   String r;
   r.resize(2);
   r[0] = h[v / 16];
@@ -52,6 +65,7 @@ String currentTimeString() {
 }
 
 static short _dosGetFileDate(const String &filePath) {
+#ifndef NOT_DOS
   int handle = open(filePath.c_str(),O_RDONLY | O_TEXT);
   union REGS r;
   r.h.ah = 0x57;
@@ -60,10 +74,14 @@ static short _dosGetFileDate(const String &filePath) {
   int386(0x21,&r,&r);
   close(handle);
   return r.w.dx;
+#else
+    return 0;
+#endif
 }
 
 static short _dosGetFileTime(const String &filePath) {
-  int handle = open(filePath.c_str(),O_RDONLY | O_TEXT);
+#ifndef NOT_DOS
+    int handle = open(filePath.c_str(),O_RDONLY | O_TEXT);
   union REGS r;
   r.h.ah = 0x57;
   r.h.al = 0x00;
@@ -71,6 +89,9 @@ static short _dosGetFileTime(const String &filePath) {
   int386(0x21,&r,&r);
   close(handle);
   return r.w.cx;
+#else
+    return 0;
+#endif
 }
 
 static FileTime toFileTime(int date, int time) {
@@ -107,7 +128,8 @@ bool operator<(const FileTime &a, const FileTime &b) {
 }
 
 Array<File> dosGetFiles(const String &filePath) {
-  Array<File> ret;
+#ifndef NOT_DOS
+    Array<File> ret;
   DIR *dirp;
   struct dirent *direntp;
   dirp = opendir( dosFileName(filePath).c_str() );
@@ -126,6 +148,9 @@ Array<File> dosGetFiles(const String &filePath) {
     closedir( dirp );
   }
   return ret;
+#else
+  return Array<File>();
+#endif
 }
 
 FileTime dosGetFileTime(const String &filePath) {
@@ -137,7 +162,8 @@ FileTime dosGetFileTime(const String &filePath) {
 }
 
 bool dosHasDrive(const char driveLetter) {
-  int d = -1;
+#ifndef NOT_DOS
+    int d = -1;
   if (driveLetter >= 'A' && driveLetter <= 'Z') d = driveLetter - 'A' + 1;
   if (driveLetter >= 'a' && driveLetter <= 'z') d = driveLetter - 'a' + 1;
   if (d < 0) return false;
@@ -148,22 +174,33 @@ bool dosHasDrive(const char driveLetter) {
   r.h.bl = d & 255;
   int386(0x21,&r,&r);
   return (r.w.ax==0x00)||(r.w.ax==0x01);
+#else
+    return false;
+#endif
 }
 
 void dosCreateFolder(const String &folderName) {
+#ifndef NOT_DOS
   mkdir(dosFileName(folderName).c_str());
+#endif
 }
 
 void dosDeleteFolder(const String &folderName) {
+#ifndef NOT_DOS
   rmdir(dosFileName(folderName).c_str());
+#endif
 }
 
 void dosRemoveFile(const String &fileName) {
+#ifndef NOT_DOS
   remove(dosFileName(fileName).c_str());
+#endif
 }
 
 void dosRenameFile(const String &oldFileName, const String &newFileName) {
+#ifndef NOT_DOS
   rename(dosFileName(oldFileName).c_str(), dosFileName(newFileName).c_str());
+#endif
 }
 
 String unixFileName(const String &filePath) {
@@ -179,18 +216,18 @@ String dosFileName(const String &filePath) {
 }
 
 String getPath(const String &fileName) {
-  int k0 = fileName.findLast("/");
-  int k1 = fileName.findLast("\\");
-  int k = fileName.length();
+  int64_t k0 = fileName.findLast("/");
+  int64_t k1 = fileName.findLast("\\");
+  int64_t k = fileName.length();
   if (k0 < k1) k0 = k1;
   if (k0>0) k = k0+1;
   return fileName.substr(0,k);
 }
 
 String getName(const String &fileName) {
-  int k0 = fileName.findLast("/");
-  int k1 = fileName.findLast("\\");
-  int k = 0;
+  int64_t k0 = fileName.findLast("/");
+  int64_t k1 = fileName.findLast("\\");
+  int64_t k = 0;
   if (k0 < k1) k0 = k1;
   if (k0>0) k = k0+1;
   return fileName.substr(k,fileName.findLast("."));

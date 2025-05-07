@@ -1,8 +1,27 @@
 // -----
 // _sprite.exe (c)2025 by Stefan Mader (MIT-License)
 // -----
+#define _CRT_SECURE_NO_WARNINGS
+#include "types.hpp"
+
+#ifndef NOT_DOS
 #include "gl.h"
+#include <i86.h>
 #include "imguigl.hpp"
+#else
+#include <imgui.h>
+#include "imgui_impl_glfw.h"
+#include <GLFW/glfw3.h>
+#define GL_CLAMP_TO_BORDER GL_REPEAT
+#define GL_CLAMP_TO_EDGE GL_REPEAT
+bool glVesa(int width, int height, int bpp);
+double glSeconds();
+void glRefresh();
+void glDone();
+void ImGuiNewFrame();
+void InitImGui(int width, int height);
+#endif
+
 #include "array.hpp"
 #include "hashmap.hpp"
 #include "filedlg.hpp"
@@ -10,7 +29,6 @@
 #include "psdimage.hpp"
 #include <stdio.h>
 #include <math.h>
-#include <i86.h>
 
 #define XRES 640
 #define YRES 480
@@ -537,7 +555,7 @@ public:
     color1 = 0xff000000;
     alpha = 0;
   }
-  char *getName() {
+  const char *getName() {
     switch(tool) {
     case TOOL_PENCIL: return "Pencil";
     case TOOL_FLOODFILL: return "FloodFill";
@@ -632,6 +650,7 @@ void undo() {
 
 int makeScreenShot = 0;
 void doScreenShot(const char *fileName) {
+#ifndef NOT_DOS
   RGBAImage img;
   img.width = XRES;
   img.height = YRES;
@@ -640,10 +659,11 @@ void doScreenShot(const char *fileName) {
   for (int i = 0; i < img.width*img.height;i++) img.data[i]|=0xff000000;
   if (!img.savePNG(fileName)) someError = true;
   delete[] img.data;
+#endif
 }
 
 void render() {
-  glClearColor(0.1,0.2,0.3,1);
+  glClearColor(0.1f,0.2f,0.3f,1);
   glClear(GL_COLOR_BUFFER_BIT);
   ImGui::Render();
   if (makeScreenShot > 0) {
@@ -885,7 +905,7 @@ bool saveSpriteSheet(const char *fileName) {
   char s2 = 'S';
   fwrite(&s1,1,1,out);
   fwrite(&s2,1,1,out);
-  unsigned short c = sprites.size();
+  unsigned short c = (unsigned short)sprites.size();
   fwrite(&c,1,2,out);
   for (int i = 0; i < c; i++) {
     for (int j = 0; j < 10; j++) {
@@ -915,7 +935,6 @@ bool loadSpriteSheet(const char *fileName) {
   FILE *in = fopen(fileName,"rb");
   if (in == NULL) {someError = true; return false;}
   char s1,s2;
-  unsigned char w,h;
   fread(&s1,1,1,in);
   fread(&s2,1,1,in);
   if (s1 != 'S' || s2 != 'S') {someError = true; return false;}
@@ -1230,8 +1249,8 @@ void plot(unsigned int *dest, int x, int y, unsigned int col) {
   int h = getCurrentSprite().height;
   double toolSize = getCurrentTool().size*0.5;
 
-  for (int y2 = y - toolSize-1; y2 <= y + toolSize+1; y2++) {
-    for (int x2 = x - toolSize-1; x2 <= x + toolSize+1; x2++) {
+  for (int y2 = (int)floor(y - toolSize-1); y2 <= (int)floor(y + toolSize+1); y2++) {
+    for (int x2 = (int)floor(x - toolSize-1); x2 <= (int)floor(x + toolSize+1); x2++) {
       double dx = doublePixel(x2 - x);
       double dy = y2 - y;
       double d = sqrt(dx*dx+dy*dy);
@@ -1322,8 +1341,8 @@ void handleToolPencil(int mx, int my) {
       dx /= d;
       dy /= d;
       for (int i = 0; i < d+1; i++) {
-        int kx = doublePixel(mx+dx*i);
-        int ky = my+dy*i;
+        int kx = doublePixel((int)floor(mx+dx*i));
+        int ky = (int)floor(my+dy*i);
         plot(&getCurrentSprite().bitmap[0],kx,ky,col);
       }
       getCurrentSprite().update();
@@ -1511,8 +1530,8 @@ void handleToolCircle(int mx, int my) {
         int k = 1024;
         for (int i = 0; i < k; i++) {
           double fk = (double)i / k * 2.0 * M_PI;
-          int x = (sin(fk)*0.5+0.5)*(endX-startX)+startX+0.5;
-          int y = (cos(fk)*0.5+0.5)*(endY-startY)+startY+0.5;
+          int x = (int)floor((sin(fk)*0.5+0.5)*(endX-startX)+startX+0.5);
+          int y = (int)floor((cos(fk)*0.5+0.5)*(endY-startY)+startY+0.5);
           plot(overlay,x,y,col);
         }
       }
@@ -1549,8 +1568,8 @@ void handleToolCircle(int mx, int my) {
           int k = 1024;
           for (int i = 0; i < k; i++) {
             double fk = (double)i / k * 2.0 * M_PI;
-            int x = (sin(fk)*0.5+0.5)*(endX-startX)+startX+0.5;
-            int y = (cos(fk)*0.5+0.5)*(endY-startY)+startY+0.5;
+            int x = (int)floor((sin(fk)*0.5+0.5)*(endX-startX)+startX+0.5);
+            int y = (int)floor((cos(fk)*0.5+0.5)*(endY-startY)+startY+0.5);
             plot(k2,x,y,col);
           }
         }
@@ -1591,8 +1610,8 @@ void handleToolLine(int mx, int my) {
       int k = 1024;
       for (int i = 0; i < k; i++) {
         double fk = (double)i / k;
-        int x = fk*(endX-startX)+startX+0.5;
-        int y = fk*(endY-startY)+startY+0.5;
+        int x = doublePixel((int)floor(fk*(endX-startX)+startX+0.5));
+        int y = (int)floor(fk*(endY-startY)+startY+0.5);
         plot(overlay,x,y,col);
       }
       getCurrentSprite().update();
@@ -1613,8 +1632,8 @@ void handleToolLine(int mx, int my) {
         int k = 1024;
         for (int i = 0; i < k; i++) {
           double fk = (double)i / k;
-          int x = doublePixel(fk*(endX-startX)+startX+0.5);
-          int y = fk*(endY-startY)+startY+0.5;
+          int x = doublePixel((int)floor(fk*(endX-startX)+startX+0.5));
+          int y = (int)floor(fk*(endY-startY)+startY+0.5);
           plot(k2,x,y,col);
         }
         getCurrentSprite().update();
@@ -2031,8 +2050,8 @@ void handleToolSetAlpha(int mx, int my) {
       dx /= d;
       dy /= d;
       for (int i = 0; i < d+1; i++) {
-        int kx = doublePixel(mx+dx*i);
-        int ky = my+dy*i;
+        int kx = doublePixel((int)floor(mx+dx*i));
+        int ky = (int)floor(my+dy*i);
         if (kx >= 0&&ky>=0&&kx<w&&ky<h)
           getCurrentSprite().bitmap[kx+ky*MAXSPRITEWIDTH] = (getCurrentSprite().bitmap[kx+ky*MAXSPRITEWIDTH] & 0x00ffffff)|(getCurrentTool().alpha<<24);
       }
@@ -2231,20 +2250,20 @@ void displaySpriteEditField() {
   ImVec2 cp0 = ImGui::GetCursorScreenPos();
   ImVec2 size = ImVec2(getCurrentSprite().width*getCurrentSpriteCanvas().zoom*getCurrentSpriteCanvas().aspect,getCurrentSprite().height*getCurrentSpriteCanvas().zoom);
   ImVec2 cp1 = ImVec2(cp0.x+size.x,cp0.y+size.y);
-  ImVec2 size2 = ImVec2(getCurrentSprite().width,getCurrentSprite().height/getCurrentSpriteCanvas().aspect);
-  ImGui::Image((void*)getCurrentSprite().texture(), size ,ImVec2(0,0),maxTex);
+  ImVec2 size2 = ImVec2((float)getCurrentSprite().width,(float)getCurrentSprite().height/getCurrentSpriteCanvas().aspect);
+  ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size ,ImVec2(0,0),maxTex);
   ImGui::SameLine();
   ImVec2 k = ImVec2(size2.x*2,size2.y*2);
   k.x += 16;
   k.y += 16*6;
   ImGui::BeginChild("Tileable",k);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(0,0));
-    ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
+    ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
     ImGui::SameLine();
-    ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
-    ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
+    ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
+    ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
     ImGui::SameLine();
-    ImGui::Image((void*)getCurrentSprite().texture(), size2 ,ImVec2(0,0),maxTex);
+    ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
     ImGui::PopStyleVar();
     if (getCurrentSpriteCanvas().mirroredMode) {
       ImGui::Checkbox("Mirror",&getCurrentSpriteCanvas().paintMirrored);
@@ -2268,29 +2287,29 @@ void displaySpriteEditField() {
     int add = 1;
     if (getCurrentSpriteCanvas().doublePixel) add = 2;
     for (int x = add; x < w; x+=add) {
-      int xp = x * (cp1.x-cp0.x) / w + cp0.x;
-      l->AddLine(ImVec2(xp,cp0.y),ImVec2(xp,cp1.y),0x40ffffff);
+      int xp = (int)floor(x * (cp1.x-cp0.x) / w + cp0.x);
+      l->AddLine(ImVec2((float)xp,cp0.y),ImVec2((float)xp,cp1.y),0x40ffffff);
     }
     for (int y = 1; y < h; y++) {
-      int yp = y * (cp1.y-cp0.y) / h + cp0.y;
-      l->AddLine(ImVec2(cp0.x,yp),ImVec2(cp1.x,yp),0x40ffffff);
+      int yp = (int)floor(y * (cp1.y-cp0.y) / h + cp0.y);
+      l->AddLine(ImVec2(cp0.x,(float)yp),ImVec2(cp1.x,(float)yp),0x40ffffff);
     }
   }
   if (getCurrentSprite().mirrorPaintX && getCurrentSpriteCanvas().paintMirrored) {
     int w = getCurrentSprite().width;
     int h = getCurrentSprite().height;
-    int xp = getCurrentSprite().mirrorXPos * (cp1.x-cp0.x) / w + cp0.x;
-    l->AddLine(ImVec2(xp,cp0.y),ImVec2(xp,cp1.y),0x8000ffff);
+    int xp = (int)floor(getCurrentSprite().mirrorXPos * (cp1.x-cp0.x) / w + cp0.x);
+    l->AddLine(ImVec2((float)xp,cp0.y),ImVec2((float)xp,cp1.y),0x8000ffff);
   }
   if (getCurrentSprite().mirrorPaintY && getCurrentSpriteCanvas().paintMirrored) {
     int w = getCurrentSprite().width;
     int h = getCurrentSprite().height;
-    int yp = getCurrentSprite().mirrorYPos * (cp1.y-cp0.y) / h + cp0.y;
-    l->AddLine(ImVec2(cp0.x,yp),ImVec2(cp1.x,yp),0x8000ffff);
+    int yp = (int)floor(getCurrentSprite().mirrorYPos * (cp1.y-cp0.y) / h + cp0.y);
+    l->AddLine(ImVec2(cp0.x,(float)yp),ImVec2(cp1.x,(float)yp),0x8000ffff);
   } 
   ImGui::End();
-  int toolMousePosX = round2((double)(mouseX-cp0.x)*getCurrentSprite().width/(cp1.x-cp0.x));
-  int toolMousePosY = round2((double)(mouseY-cp0.y)*getCurrentSprite().height/(cp1.y-cp0.y));
+  int toolMousePosX = (int)round2((double)(mouseX-cp0.x)*getCurrentSprite().width/(cp1.x-cp0.x));
+  int toolMousePosY = (int)round2((double)(mouseY-cp0.y)*getCurrentSprite().height/(cp1.y-cp0.y));
   lastMx = toolMousePosX;
   lastMy = toolMousePosY;
   before = getCurrentSprite().bitmap;
@@ -2349,9 +2368,9 @@ void displayColorPicker() {
   ImVec2 windowSize = ImGui::GetWindowSize();
   ImVec2 windowPos = ImGui::GetWindowPos();
   ImVec2 cp0 = ImGui::GetCursorScreenPos();
-  int w = windowSize.x*0.8;
-  int h = windowSize.y*0.6-16;
-  ImGui::Image((void*)getCurrentPalette().paletteTexture(), ImVec2(w,h));
+  int w = (int)floor(windowSize.x*0.8);
+  int h = (int)floor(windowSize.y*0.6-16);
+  ImGui::Image((void*)((intptr_t)getCurrentPalette().paletteTexture()), ImVec2((float)w,(float)h));
   ImDrawList *l = ImGui::GetWindowDrawList();
   static char colorInput[10];
   if (colorInputInit) {
@@ -2397,7 +2416,7 @@ void displayColorPicker() {
     }
   }
   ImGui::PushItemWidth(80);
-  if (ImGui::InputText("Color",colorInput,10)) {
+  if (ImGui::InputText("Color",colorInput,10) && (colIdx>=0)) {
     unsigned int color = fromColorString(colorInput);
     getCurrentPalette().colors[colIdx] = color;
     getCurrentPalette().slotColors[getCurrentPalette().slot] = color;
@@ -2473,11 +2492,11 @@ bool importSpriteAtlas(const char *fileName) {
     ImVec2 cp0 = ImGui::GetCursorScreenPos();
     ImVec2 cp1 = ImGui::GetCursorScreenPos();
     double aspect = getCurrentSpriteCanvas().aspect;
-    ImGui::Image((void*)textureId,ImVec2(img.width*zoom*zoom3,img.height*zoom/aspect*zoom3));
-    cp1.x += img.width*zoom;
-    cp1.y += img.height*zoom/aspect;
+    ImGui::Image((void*)((intptr_t)textureId),ImVec2((float)(img.width*zoom*zoom3),(float)(img.height*zoom/aspect*zoom3)));
+    cp1.x += (float)(img.width*zoom);
+    cp1.y += (float)(img.height*zoom/aspect);
     ImDrawList *l = ImGui::GetWindowDrawList();
-    int oneLine = floor(img.width*zoom3)-borderLeft-borderRight+distanceX;
+    int oneLine = (int)floor(img.width*zoom3)-borderLeft-borderRight+distanceX;
     int spritesOnOneLine=-1;
     if (sizeX+distanceX > 0) {
       spritesOnOneLine=(oneLine)/(sizeX+distanceX);
@@ -2514,13 +2533,13 @@ bool importSpriteAtlas(const char *fileName) {
       int y0 = borderTop+lineY*(sizeY+distanceY);
       int x1 = x0 + sizeX;
       int y1 = y0 + sizeY;
-      ImVec2 ce0 = ImVec2((double)x0/floor(img.width*zoom3),(double)y0/floor(img.height*zoom3));
-      ImVec2 ce1 = ImVec2((double)x1/floor(img.width*zoom3),(double)y1/floor(img.height*zoom3));
+      ImVec2 ce0 = ImVec2((float)(x0/floor(img.width*zoom3)),(float)(y0/floor(img.height*zoom3)));
+      ImVec2 ce1 = ImVec2((float)(x1/floor(img.width*zoom3)),(float)(y1/floor(img.height*zoom3)));
       ImVec2 cp0 = ImGui::GetCursorScreenPos();
       ImVec2 cp1 = ImGui::GetCursorScreenPos();
       cp1.x += sizeX*zoom2;
-      cp1.y += sizeY*zoom2/aspect;
-      ImGui::Image((void*)textureId,ImVec2(sizeX*zoom2,sizeY*zoom2/aspect),ce0,ce1);
+      cp1.y += (float)(sizeY*zoom2/aspect);
+      ImGui::Image((void*)((intptr_t)textureId),ImVec2((float)(sizeX*zoom2),(float)(sizeY*zoom2/aspect)),ce0,ce1);
       ImDrawList *l = ImGui::GetWindowDrawList();
       l->AddRect(cp0,cp1,0xff0000ff,0);
     }
@@ -2728,7 +2747,7 @@ bool importSpritesCounter(const char *fileName) {
   String path = getPath(String(fileName));
   String name = getName(String(fileName));
   int firstCounterPos=-1;
-  for (int i =name.size()-1; i >= 0; i--) {
+  for (int i = (int)name.size()-1; i >= 0; i--) {
     char c = name[i];
     if (c >= '0' && c <= '9')
       firstCounterPos = i;
@@ -2885,7 +2904,7 @@ bool importPSDLayers(const char *fileName) {
     layer = clamp(layer,0,img.NumLayers()-1);
 
     int ofsX,ofsY,sizX,sizY;
-    unsigned int *imagedata=img.GetLayerData(layer, sizX, sizY, ofsX, ofsY);
+    unsigned int *imagedata=(unsigned int*)img.GetLayerData(layer, sizX, sizY, ofsX, ofsY);
     unsigned int *data = new unsigned int[imageWidth*imageHeight];
     memset(data,0,imageWidth*imageHeight*4);
     for (int y = 0; y < sizY; y++) {
@@ -2911,7 +2930,7 @@ bool importPSDLayers(const char *fileName) {
     ImVec2 cp1 = cp0;
     cp0.x += dp.x;
     cp0.y += dp.y;
-    ImGui::Image((void*)textureId,dp);
+    ImGui::Image((void*)((intptr_t)textureId),dp);
     ImDrawList *l = ImGui::GetWindowDrawList();
     l->AddRect(cp0,cp1,0xff202020,0);
     ImGui::End();
@@ -2941,7 +2960,7 @@ bool importPSDLayers(const char *fileName) {
       Array<Sprite> ins;
       for(int i = layer0; i <= layerN; i++) {
         int ofsX,ofsY,sizX,sizY;
-        unsigned int *imagedata=img.GetLayerData(i, sizX, sizY, ofsX, ofsY);
+        unsigned int *imagedata=(unsigned int*)img.GetLayerData(i, sizX, sizY, ofsX, ofsY);
         Sprite k;
         k.width = imageWidth*(doublePixel?2:1);
         k.height = imageHeight;
@@ -3040,7 +3059,7 @@ void displayLoadSave() {
     ImGuiNewFrame();
       
     if (previewPictureId != 0) {
-      ImVec2 cv2 = ImVec2(previewPictureWidth,previewPictureHeight);
+      ImVec2 cv2 = ImVec2((float)previewPictureWidth,(float)previewPictureHeight);
       cv2.x *= zoom4;
       cv2.y *= zoom4/getCurrentSpriteCanvas().aspect;
       ImVec2 cv1 = cv2;
@@ -3054,7 +3073,7 @@ void displayLoadSave() {
       ImGui::InputFloat("Zoom##Zoom4",&zoom4,0.5);
       ImGui::PopItemWidth();
       zoom4 = clamp(zoom4,0.1f,32.f);
-      ImGui::Image((void*)previewPictureId,cv1);
+      ImGui::Image((void*)((intptr_t)previewPictureId),cv1);
       ImGui::End();
     }
 
@@ -3104,9 +3123,9 @@ void displayLoadSave() {
 
 void buttonActive(int toolType) {
   if (getCurrentTool().tool == toolType)
-    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.5,0.6,0.9,1));
+    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.5f,0.6f,0.9f,1));
   else
-    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.2,0.3,0.4,1));
+    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.2f,0.3f,0.4f,1));
 }
 
 void buttonActiveEnd() {
@@ -3160,12 +3179,12 @@ void displayToolWindow() {
       if (ImGui::Button("Place")) { 
         getCurrentTool().place=true;
       }
-      ImGui::InputFloat("x##x11",&getCurrentTool().x,1.0);
+      ImGui::InputFloat("x##x11",&getCurrentTool().x,1.0f);
       ImGui::SameLine();
-      ImGui::InputFloat("y##y11",&getCurrentTool().y,1.0);
-      ImGui::InputFloat("w##w11",&getCurrentTool().w,0.05);
+      ImGui::InputFloat("y##y11",&getCurrentTool().y,1.0f);
+      ImGui::InputFloat("w##w11",&getCurrentTool().w,0.05f);
       ImGui::SameLine();
-      ImGui::InputFloat("h##h11",&getCurrentTool().h,0.05);
+      ImGui::InputFloat("h##h11",&getCurrentTool().h,0.05f);
       getCurrentTool().h = clamp(getCurrentTool().h,0.001f,128.f);
       getCurrentTool().w = clamp(getCurrentTool().w,0.001f,128.f);
     }
@@ -3307,10 +3326,10 @@ void displaySpriteSheet() {
     ImGui::SetCursorPos(cpx);
     int w = sprites[i].width;
     int h = sprites[i].height;
-    ImVec2 size = ImVec2(wh*getCurrentSpriteCanvas().aspect,wh);
+    ImVec2 size = ImVec2(wh*getCurrentSpriteCanvas().aspect,(float)wh);
     ImVec2 cp1 = ImVec2(cp0.x+size.x,cp0.y+size.y);
     ImVec2 maxTex = ImVec2((float)w/MAXSPRITEWIDTH,(float)h/MAXSPRITEHEIGHT);
-    ImGui::Image((void*)sprites[i].textureId,size,ImVec2(0,0),maxTex);
+    ImGui::Image((void*)((intptr_t)sprites[i].textureId),size,ImVec2(0,0),maxTex);
     ImDrawList *l = ImGui::GetWindowDrawList();
     l->AddRect(cp0,cp1,getCurrentSpriteCanvas().spriteNr==i?0xff2020ff:0xff202020,0);
     if (ImGui::IsMouseHoveringRect(cp0,cp1) && (mouseButtons & 1)) {
@@ -3333,7 +3352,7 @@ float colorWheelHue = 0;
 
 static float c(float a) {
   a -= 60.f+180.f;
-  a = fmod(a+360.f,360.f);
+  a = (float)fmod(a+360.f,360.f);
   if (a < 60.f) return a / 60.f;
   if (a < 60.f+120.f) return 1;
   if (a < 240.f) return 1.f-(a-(60.f+120.f))/60.f;
@@ -3347,18 +3366,18 @@ static unsigned int hsl(float h,float s,float l) {
   r = r * s + 1.f-s;
   g = g * s + 1.f-s;
   b = b * s + 1.f-s;
-  int ri = r*255.f;
-  int gi = g*255.f;
-  int bi = b*255.f;
+  int ri = (int)floor(r*255.f);
+  int gi = (int)floor(g*255.f);
+  int bi = (int)floor(b*255.f);
   if (ri<0) ri = 0;
   if (gi<0) gi = 0;    
   if (bi<0) bi = 0;
   if (ri>255) ri = 255;
   if (gi>255) gi = 255;    
   if (bi>255) bi = 255;
-  ri *= l;
-  gi *= l;
-  bi *= l;
+  ri = (int)floor(ri*l);
+  gi = (int)floor(gi*l);
+  bi = (int)floor(bi*l);
   return (ri|(gi<<8)|(bi<<16)|0xff000000);
 }
 
@@ -3398,7 +3417,7 @@ void displayColorWheel() {
   ImVec2 cp2 = cp1;
   cp2.x += COLORWHEELXRES;
   cp2.y += COLORWHEELYRES;
-  ImGui::Image((void*)colorWheelTextureId,ImVec2(COLORWHEELXRES,COLORWHEELYRES));
+  ImGui::Image((void*)((intptr_t)colorWheelTextureId),ImVec2(COLORWHEELXRES,COLORWHEELYRES));
   static char text[10];
   static unsigned int col;
   if (ImGui::IsMouseHoveringRect(cp1,cp2) && (mouseButtons & 1)) {
@@ -3406,7 +3425,7 @@ void displayColorWheel() {
     toColorString(text,col);
   }
   ImVec2 cp0 = ImGui::GetCursorScreenPos();
-  ImGui::Image((void*)hueLineTextureId,ImVec2(COLORWHEELXRES,COLORWHEELHUEY));
+  ImGui::Image((void*)((intptr_t)hueLineTextureId),ImVec2(COLORWHEELXRES,COLORWHEELHUEY));
   cp2 = cp0;
   cp2.x += COLORWHEELXRES;
   cp2.y += COLORWHEELYRES;
@@ -3467,20 +3486,20 @@ void displayTestBox() {
   static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(565),_HEIGHT(320))); isInit = false;
   ImGui::Begin("TestBox", NULL, ImVec2(_WIDTH(75),_HEIGHT(85)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoTitleBar);
   int width = 50;
-  int height = width/getCurrentSpriteCanvas().aspect;
-  ImVec2 cv = ImVec2(width/getCurrentTestBox().width,height/getCurrentTestBox().height);
+  int height = (int)floor(width/getCurrentSpriteCanvas().aspect);
+  ImVec2 cv = ImVec2((float)width/getCurrentTestBox().width,(float)height/getCurrentTestBox().height);
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
   int over=-1;
   for (int y = 0; y < getCurrentTestBox().height; y++) {
     for (int x = 0; x < getCurrentTestBox().width; x++) {
       if (x != 0) ImGui::SameLine();
       int spriteNr = clamp((int)getCurrentTestBox().spriteIndices[x+y*getCurrentTestBox().width],0,(int)sprites.size()-1);
-      ImVec2 c2 = ImVec2((double)sprites[spriteNr].width/MAXSPRITEWIDTH,(double)sprites[spriteNr].height/MAXSPRITEHEIGHT);
+      ImVec2 c2 = ImVec2((float)sprites[spriteNr].width/MAXSPRITEWIDTH,(float)sprites[spriteNr].height/MAXSPRITEHEIGHT);
       ImVec2 sp0 = ImGui::GetCursorScreenPos();
       ImVec2 sp1 = sp0;
       sp1.x += cv.x;
       sp1.y += cv.y;
-      ImGui::Image((void*)sprites[spriteNr].textureId,cv,ImVec2(0,0),c2);
+      ImGui::Image((void*)((intptr_t)sprites[spriteNr].textureId),cv,ImVec2(0,0),c2);
       if (ImGui::IsMouseHoveringRect(sp0,sp1)) {
         over = spriteNr;
         ImDrawList *l = ImGui::GetWindowDrawList();
@@ -3669,15 +3688,17 @@ struct meminfo {
 
 void displayAbout() {
 
+#ifndef NOT_DOS
   union REGS regs;
   struct SREGS sregs;
-
   regs.x.eax = 0x00000500;
   memset( &sregs, 0, sizeof(sregs) );
   sregs.es = FP_SEG( &MemInfo );
   regs.x.edi = FP_OFF( &MemInfo );
-
   int386x( 0x31, &regs, &regs, &sregs );
+#else
+  memset(&MemInfo, 0, sizeof(MemInfo));
+#endif
 
   bool finished = false;
   bool first = true;

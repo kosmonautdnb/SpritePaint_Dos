@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "filedlg.hpp"
 #include "imguigl.hpp"
 #include "hashmap.hpp"
@@ -88,7 +89,7 @@ bool FileDialog::display() {
     ImVec2 k = ImGui::GetCursorPos();
     String buttonName = files[i].name.name+files[i].name.extension + "##FileButton" + toString(i);
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0,0,0,0));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1,1,1,0.2));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1,1,1,0.2f));
     bool isDir = (files[i].attributes & DOS_ATTR_SUBDIR);
     ImGui::PushStyleColor(ImGuiCol_Text, isDir ? ImVec4(1,1,0,1) : ImVec4(1,1,1,1));
     if (ImGui::Button(buttonName.c_str())) {
@@ -201,13 +202,13 @@ void FileDialog::syncFileData() {
 }
 
 void FileDialog::oneFolderUp() {
-  int i = currentPath.findLast("/");
+  int64_t i = currentPath.findLast("/");
   i = currentPath.findLast(i,"/"); 
   currentPath = currentPath.substr(0,i) + "/";
 }
 
 void FileDialog::filter() {
-  int i;
+  int64_t i;
   for (i = files.size() - 1; i >= 0; i--) {
     if (files[i].name.name == ".") {files.erase(i,1); break;}
   }

@@ -3,7 +3,7 @@ A basic sprite paint program for Dos written in WatcomC++.
 
 try: _sprite.exe it's the compiled program.
 
-![ScreenShot](https://raw.github.com/kosmonautdnb/SpritePaint_Dos/main/DESC.PNG)
+![ScreenShot](https://raw.github.com/kosmonautdnb/SpritePaint_Dos/blob/main/DESC.PNG)
 
 A video of using this tool: https://www.youtube.com/watch?v=1TvwSr7-zCg
 

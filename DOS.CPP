@@ -8,6 +8,14 @@
 #ifndef NOT_DOS
 #include <i86.h>
 #endif
+#ifdef ON_WINDOWS
+#include <vector>
+#include <string>
+#include <windows.h>
+#include <fileapi.h>
+#include <filesystem>
+#include <sys/stat.h>
+#endif
 #include <fcntl.h>
 
 String getCWD() {
@@ -17,8 +25,9 @@ String getCWD() {
   getcwd(&(currentWorkingDirectory[0]),currentWorkingDirectory.length());
   currentWorkingDirectory.resize(strlen(currentWorkingDirectory.c_str()));
   return unixFileName(currentWorkingDirectory+"/");
-#else
-  return "";
+#endif
+#ifdef ON_WINDOWS
+ return unixFileName(String((std::filesystem::current_path().string().c_str())))+"/";
 #endif
 }
 
@@ -129,7 +138,7 @@ bool operator<(const FileTime &a, const FileTime &b) {
 
 Array<File> dosGetFiles(const String &filePath) {
 #ifndef NOT_DOS
-    Array<File> ret;
+  Array<File> ret;
   DIR *dirp;
   struct dirent *direntp;
   dirp = opendir( dosFileName(filePath).c_str() );
@@ -148,17 +157,64 @@ Array<File> dosGetFiles(const String &filePath) {
     closedir( dirp );
   }
   return ret;
-#else
-  return Array<File>();
+#endif
+#ifdef ON_WINDOWS
+  Array<File> ret;
+  std::string path = filePath.c_str();
+  FileTime fileTime;
+  fileTime.day = 0;
+  fileTime.hour = 0;
+  fileTime.millisecond = 0;
+  fileTime.minute = 0;
+  fileTime.month = 0;
+  fileTime.second = 0;
+  fileTime.year = 0;
+  File r;
+  r.date = fileTime;
+  r.name.full = "..";
+  r.name.name = "..";
+  r.name.extension = "";
+  r.attributes = DOS_ATTR_SUBDIR;
+  ret.push_back(r);
+  for (const auto& entry : std::filesystem::directory_iterator(path)) {
+    File r;
+    r.name = toFileName(filePath, entry.path().filename().string().c_str());
+    r.size = entry.file_size();
+    FileTime fileTime = dosGetFileTime(dosFileName(r.name.full));
+    r.date = fileTime;
+    r.attributes = (entry.is_directory() ? DOS_ATTR_SUBDIR : 0);
+    ret.push_back(r);
+  }
+  return ret;
 #endif
 }
 
 FileTime dosGetFileTime(const String &filePath) {
+#ifndef NOT_DOS
   FileTime r;
   short date = _dosGetFileDate(filePath);
   short time = _dosGetFileTime(filePath);
   r = toFileTime(date,time);
   return r;
+#endif
+#ifdef ON_WINDOWS
+  FileTime r;
+  struct stat filestat;
+  if (stat(filePath.c_str(), &filestat) == 0) {
+      struct tm* timeinfo;
+      timeinfo = localtime(&filestat.st_mtime);
+      if (timeinfo != NULL) {
+          r.day = timeinfo->tm_mday;
+          r.month = timeinfo->tm_mon + 1;
+          r.year = timeinfo->tm_year + 1900;
+          r.hour = timeinfo->tm_hour;
+          r.minute = timeinfo->tm_min;
+          r.second = timeinfo->tm_sec;
+          r.millisecond = 0;
+      }
+  }
+  return r;
+#endif
 }
 
 bool dosHasDrive(const char driveLetter) {
@@ -174,33 +230,39 @@ bool dosHasDrive(const char driveLetter) {
   r.h.bl = d & 255;
   int386(0x21,&r,&r);
   return (r.w.ax==0x00)||(r.w.ax==0x01);
-#else
-    return false;
+#endif
+#ifdef ON_WINDOWS
+  std::vector<std::string> arrayOfDrives;
+  wchar_t* szDrives = new wchar_t[MAX_PATH]();
+  if (GetLogicalDriveStringsW(MAX_PATH, szDrives));
+  for (int i = 0; i < ('Z'-'A')*4; i += 4) {
+    if (szDrives[i] != (char)0) {
+    wchar_t q = szDrives[i];
+      if (q == (L'A' + (driveLetter - 'A'))) {
+        delete[] szDrives;
+        return true;
+      }
+    }
+  }
+  delete[] szDrives;
+  return false;
 #endif
 }
 
 void dosCreateFolder(const String &folderName) {
-#ifndef NOT_DOS
   mkdir(dosFileName(folderName).c_str());
-#endif
 }
 
 void dosDeleteFolder(const String &folderName) {
-#ifndef NOT_DOS
   rmdir(dosFileName(folderName).c_str());
-#endif
 }
 
 void dosRemoveFile(const String &fileName) {
-#ifndef NOT_DOS
   remove(dosFileName(fileName).c_str());
-#endif
 }
 
 void dosRenameFile(const String &oldFileName, const String &newFileName) {
-#ifndef NOT_DOS
   rename(dosFileName(oldFileName).c_str(), dosFileName(newFileName).c_str());
-#endif
 }
 
 String unixFileName(const String &filePath) {

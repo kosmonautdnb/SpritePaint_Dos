@@ -1,6 +1,20 @@
 #define _CRT_SECURE_NO_WARNINGS
-#include "filedlg.hpp"
+
+#include "TYPES.HPP"
+
+#ifndef NOT_DOS
 #include "imguigl.hpp"
+#define FDWIDTH 400
+#define FDHEIGHT 434
+#define FDXTAB 100
+#else
+#include <imgui/imgui.h>
+#define FDWIDTH 700
+#define FDHEIGHT 434
+#define FDXTAB 400
+#endif
+
+#include "filedlg.hpp"
 #include "hashmap.hpp"
 
 extern int glFrameBufferWidth;
@@ -38,7 +52,7 @@ bool FileDialog::display() {
   bool ready = false;
   int i;
   if (!doDisplay) return ready;
-  ImGui::Begin(doLoad ? "Load File##File Dialog" : "Save File##File Dialog", NULL, ImVec2(400,434), -1, ImGuiWindowFlags_NoResize);
+  ImGui::Begin(doLoad ? "Load File##File Dialog" : "Save File##File Dialog", NULL, ImVec2(FDWIDTH,FDHEIGHT), -1, ImGuiWindowFlags_NoResize);
 
   Array<String> pathComponents;
   const char *t = currentPath.c_str();
@@ -56,7 +70,7 @@ bool FileDialog::display() {
 
   for (i = 0; i < pathComponents.size(); i++) {
     if (i != 0) ImGui::SameLine();
-    if (ImGui::Button((pathComponents[i]+"##pathButtons"+toString(i)).c_str())) {
+    if (ImGui::Button((pathComponents[i]+"##pathButtons"+toString(i)).c_str())&&i>0) {
       String newPath;
       for (int j = 0; j <= i; j++) {
         newPath += pathComponents[j] + "/";
@@ -84,7 +98,7 @@ bool FileDialog::display() {
 
   ImGui::Separator();
 
-  ImGui::BeginChild("FileView", ImVec2(400,300));
+  ImGui::BeginChild("FileView", ImVec2(FDWIDTH,300));
   for (i = 0; i < files.size(); i++) {
     ImVec2 k = ImGui::GetCursorPos();
     String buttonName = files[i].name.name+files[i].name.extension + "##FileButton" + toString(i);
@@ -115,7 +129,7 @@ bool FileDialog::display() {
     ImGui::PopStyleColor();
     ImGui::PopStyleColor();
     ImGui::PopStyleColor();
-    k.x += 100;
+    k.x += FDXTAB;
     ImGui::SetCursorPos(k);
     ImGui::Text(("   " + sizeString(files[i].attributes,files[i].size) + "\t" + dateString(files[i].date) + " " + attributeString(files[i].attributes)).c_str());
   }
@@ -204,7 +218,7 @@ void FileDialog::syncFileData() {
 void FileDialog::oneFolderUp() {
   int64_t i = currentPath.findLast("/");
   i = currentPath.findLast(i,"/"); 
-  currentPath = currentPath.substr(0,i) + "/";
+  if (i >= 0) currentPath = currentPath.substr(0,i) + "/";
 }
 
 void FileDialog::filter() {

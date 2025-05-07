@@ -3,6 +3,7 @@
 
 #ifdef _MSC_VER
 #define NOT_DOS
+#define ON_WINDOWS
 #endif
 
 #ifdef NOT_DOS
@@ -17,6 +18,8 @@ typedef unsigned short uint16_t;
 typedef char int8_t;
 typedef unsigned char uint8_t;
 typedef uint32_t intptr_t;
+typedef unsigned int DWORD;
+typedef unsigned int UINT;
 #endif
 
 #ifndef NOT_DOS
@@ -27,7 +30,5 @@ typedef uint32_t intptr_t;
 #define snprintf_x5(__a__,__b__,__c__,__d__,__e__) snprintf(__a__,__b__,__c__,__d__,__e__)
 #endif
 
-typedef unsigned int DWORD;
-typedef unsigned int UINT;
 
 #endif //__TYPES_HPP__

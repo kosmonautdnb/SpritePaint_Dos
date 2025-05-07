@@ -8,9 +8,10 @@
 #include "gl.h"
 #include <i86.h>
 #include "imguigl.hpp"
+#define ImTextureID void *
 #else
-#include <imgui.h>
-#include "imgui_impl_glfw.h"
+#include <imgui/imgui.h>
+#include <imgui/examples/opengl3_example/imgui_impl_glfw_gl3.h >
 #include <GLFW/glfw3.h>
 #define GL_CLAMP_TO_BORDER GL_REPEAT
 #define GL_CLAMP_TO_EDGE GL_REPEAT
@@ -30,9 +31,15 @@ void InitImGui(int width, int height);
 #include <stdio.h>
 #include <math.h>
 
+#ifndef NOT_DOS
 #define XRES 640
 #define YRES 480
 #define MONITORASPECT (16.0/9.0) // (4.0/3.0)
+#else
+#define XRES 1280
+#define YRES 720
+#define MONITORASPECT (1*((double)XRES/YRES))
+#endif
 
 /*
 #define VIDEO
@@ -1057,7 +1064,9 @@ void displayMenuBar() {
         if (ImGui::MenuItem("Load sprite sheet")) loadSave = LoadSave_LoadSpriteSheet;
         if (ImGui::MenuItem("Save sprite sheet")) loadSave = LoadSave_SaveSpriteSheet;
         ImGui::Separator();
+#ifndef NOT_DOS
         if (ImGui::MenuItem("Save screenshot")) makeScreenShot = 2;
+#endif
 #ifdef VIDEO
         if (ImGui::MenuItem("Record video")) {videoFrame=0;recordVideo=true;}
 #endif
@@ -2251,19 +2260,19 @@ void displaySpriteEditField() {
   ImVec2 size = ImVec2(getCurrentSprite().width*getCurrentSpriteCanvas().zoom*getCurrentSpriteCanvas().aspect,getCurrentSprite().height*getCurrentSpriteCanvas().zoom);
   ImVec2 cp1 = ImVec2(cp0.x+size.x,cp0.y+size.y);
   ImVec2 size2 = ImVec2((float)getCurrentSprite().width,(float)getCurrentSprite().height/getCurrentSpriteCanvas().aspect);
-  ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size ,ImVec2(0,0),maxTex);
+  ImGui::Image((ImTextureID)((intptr_t)getCurrentSprite().texture()), size ,ImVec2(0,0),maxTex);
   ImGui::SameLine();
   ImVec2 k = ImVec2(size2.x*2,size2.y*2);
   k.x += 16;
   k.y += 16*6;
   ImGui::BeginChild("Tileable",k);
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(0,0));
-    ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
+    ImGui::Image((ImTextureID)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
     ImGui::SameLine();
-    ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
-    ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
+    ImGui::Image((ImTextureID)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
+    ImGui::Image((ImTextureID)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
     ImGui::SameLine();
-    ImGui::Image((void*)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
+    ImGui::Image((ImTextureID)((intptr_t)getCurrentSprite().texture()), size2 ,ImVec2(0,0),maxTex);
     ImGui::PopStyleVar();
     if (getCurrentSpriteCanvas().mirroredMode) {
       ImGui::Checkbox("Mirror",&getCurrentSpriteCanvas().paintMirrored);
@@ -2370,7 +2379,7 @@ void displayColorPicker() {
   ImVec2 cp0 = ImGui::GetCursorScreenPos();
   int w = (int)floor(windowSize.x*0.8);
   int h = (int)floor(windowSize.y*0.6-16);
-  ImGui::Image((void*)((intptr_t)getCurrentPalette().paletteTexture()), ImVec2((float)w,(float)h));
+  ImGui::Image((ImTextureID)((intptr_t)getCurrentPalette().paletteTexture()), ImVec2((float)w,(float)h));
   ImDrawList *l = ImGui::GetWindowDrawList();
   static char colorInput[10];
   if (colorInputInit) {
@@ -2492,7 +2501,7 @@ bool importSpriteAtlas(const char *fileName) {
     ImVec2 cp0 = ImGui::GetCursorScreenPos();
     ImVec2 cp1 = ImGui::GetCursorScreenPos();
     double aspect = getCurrentSpriteCanvas().aspect;
-    ImGui::Image((void*)((intptr_t)textureId),ImVec2((float)(img.width*zoom*zoom3),(float)(img.height*zoom/aspect*zoom3)));
+    ImGui::Image((ImTextureID)((intptr_t)textureId),ImVec2((float)(img.width*zoom*zoom3),(float)(img.height*zoom/aspect*zoom3)));
     cp1.x += (float)(img.width*zoom);
     cp1.y += (float)(img.height*zoom/aspect);
     ImDrawList *l = ImGui::GetWindowDrawList();
@@ -2539,7 +2548,7 @@ bool importSpriteAtlas(const char *fileName) {
       ImVec2 cp1 = ImGui::GetCursorScreenPos();
       cp1.x += sizeX*zoom2;
       cp1.y += (float)(sizeY*zoom2/aspect);
-      ImGui::Image((void*)((intptr_t)textureId),ImVec2((float)(sizeX*zoom2),(float)(sizeY*zoom2/aspect)),ce0,ce1);
+      ImGui::Image((ImTextureID)((intptr_t)textureId),ImVec2((float)(sizeX*zoom2),(float)(sizeY*zoom2/aspect)),ce0,ce1);
       ImDrawList *l = ImGui::GetWindowDrawList();
       l->AddRect(cp0,cp1,0xff0000ff,0);
     }
@@ -2930,7 +2939,7 @@ bool importPSDLayers(const char *fileName) {
     ImVec2 cp1 = cp0;
     cp0.x += dp.x;
     cp0.y += dp.y;
-    ImGui::Image((void*)((intptr_t)textureId),dp);
+    ImGui::Image((ImTextureID)((intptr_t)textureId),dp);
     ImDrawList *l = ImGui::GetWindowDrawList();
     l->AddRect(cp0,cp1,0xff202020,0);
     ImGui::End();
@@ -3073,7 +3082,7 @@ void displayLoadSave() {
       ImGui::InputFloat("Zoom##Zoom4",&zoom4,0.5);
       ImGui::PopItemWidth();
       zoom4 = clamp(zoom4,0.1f,32.f);
-      ImGui::Image((void*)((intptr_t)previewPictureId),cv1);
+      ImGui::Image((ImTextureID)((intptr_t)previewPictureId),cv1);
       ImGui::End();
     }
 
@@ -3329,7 +3338,7 @@ void displaySpriteSheet() {
     ImVec2 size = ImVec2(wh*getCurrentSpriteCanvas().aspect,(float)wh);
     ImVec2 cp1 = ImVec2(cp0.x+size.x,cp0.y+size.y);
     ImVec2 maxTex = ImVec2((float)w/MAXSPRITEWIDTH,(float)h/MAXSPRITEHEIGHT);
-    ImGui::Image((void*)((intptr_t)sprites[i].textureId),size,ImVec2(0,0),maxTex);
+    ImGui::Image((ImTextureID)((intptr_t)sprites[i].textureId),size,ImVec2(0,0),maxTex);
     ImDrawList *l = ImGui::GetWindowDrawList();
     l->AddRect(cp0,cp1,getCurrentSpriteCanvas().spriteNr==i?0xff2020ff:0xff202020,0);
     if (ImGui::IsMouseHoveringRect(cp0,cp1) && (mouseButtons & 1)) {
@@ -3417,7 +3426,7 @@ void displayColorWheel() {
   ImVec2 cp2 = cp1;
   cp2.x += COLORWHEELXRES;
   cp2.y += COLORWHEELYRES;
-  ImGui::Image((void*)((intptr_t)colorWheelTextureId),ImVec2(COLORWHEELXRES,COLORWHEELYRES));
+  ImGui::Image((ImTextureID)((intptr_t)colorWheelTextureId),ImVec2(COLORWHEELXRES,COLORWHEELYRES));
   static char text[10];
   static unsigned int col;
   if (ImGui::IsMouseHoveringRect(cp1,cp2) && (mouseButtons & 1)) {
@@ -3425,7 +3434,7 @@ void displayColorWheel() {
     toColorString(text,col);
   }
   ImVec2 cp0 = ImGui::GetCursorScreenPos();
-  ImGui::Image((void*)((intptr_t)hueLineTextureId),ImVec2(COLORWHEELXRES,COLORWHEELHUEY));
+  ImGui::Image((ImTextureID)((intptr_t)hueLineTextureId),ImVec2(COLORWHEELXRES,COLORWHEELHUEY));
   cp2 = cp0;
   cp2.x += COLORWHEELXRES;
   cp2.y += COLORWHEELYRES;
@@ -3499,7 +3508,7 @@ void displayTestBox() {
       ImVec2 sp1 = sp0;
       sp1.x += cv.x;
       sp1.y += cv.y;
-      ImGui::Image((void*)((intptr_t)sprites[spriteNr].textureId),cv,ImVec2(0,0),c2);
+      ImGui::Image((ImTextureID)((intptr_t)sprites[spriteNr].textureId),cv,ImVec2(0,0),c2);
       if (ImGui::IsMouseHoveringRect(sp0,sp1)) {
         over = spriteNr;
         ImDrawList *l = ImGui::GetWindowDrawList();

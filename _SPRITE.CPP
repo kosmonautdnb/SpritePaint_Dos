@@ -1212,7 +1212,11 @@ void displayMenuBar() {
         if (ImGui::MenuItem("About")) {showAbout = true; mouseDelay=MOUSEDELAY;}
         ImGui::EndMenu();
       }
+#ifndef NOT_DOS
       ImGui::Text("\t\t\t\t\t%02d|%02d %s  FPS/%d",coordX,coordY,currentTimeString().c_str(),(int)fps);
+#else
+      ImGui::Text("\t\t\t\t\t%02d|%02d ", coordX, coordY);
+#endif
 
       ImGui::EndMainMenuBar();
     }
@@ -1236,6 +1240,7 @@ void displayQuitBox() {
     if(ImGui::Button("No") || ImGui::IsKeyDown('n') || ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
       ImGui::GetIO().KeysDown['n'] = 0;
       ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
+      mouseDelay = MOUSEDELAY;
       askForQuit = false;
     }
     ImGui::End();

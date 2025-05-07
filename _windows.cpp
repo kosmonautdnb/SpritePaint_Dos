@@ -57,7 +57,8 @@ bool glVesa(int width, int height, int bpp) {
 }
 
 double glSeconds() {
-    return 0;
+    static double start = glfwGetTime();
+    return glfwGetTime()-start;
 }
 
 void glRefresh() {

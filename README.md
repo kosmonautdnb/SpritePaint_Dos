@@ -1,8 +1,6 @@
 # SpritePaint_Dos
 A basic sprite paint program for Dos written in WatcomC++.
 
-![ScreenShot](https://raw.github.com/kosmonautdnb/SpritePaint_Dos/main/DESC.PNG)
-
 try: _sprite.exe it's the compiled program.
 
 A video of using this tool: https://www.youtube.com/watch?v=1TvwSr7-zCg

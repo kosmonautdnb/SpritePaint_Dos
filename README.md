@@ -1,7 +1,9 @@
 # SpritePaint_Dos
 A basic sprite paint program for Dos written in WatcomC++.
 
-try: _sprite.exe it's the compiled program.
+try: _sprite.exe it's the compiled program for DOS.
+
+_winsprite.exe is the MS-WINDOWS port of it.
 
 ![ScreenShot](https://raw.github.com/kosmonautdnb/SpritePaint_Dos/main/thumb.PNG)
 

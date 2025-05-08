@@ -2362,12 +2362,12 @@ void displaySpriteEditField() {
 
 void displayColorPicker() {
   static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(330))); isInit = false;
-  ImGui::Begin("Palette",NULL,ImVec2(_WIDTH(180),_HEIGHT(170)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+  ImGui::Begin("Palette",NULL,ImVec2(_WIDTH(180),_HEIGHT(150)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
   ImVec2 windowSize = ImGui::GetWindowSize();
   ImVec2 windowPos = ImGui::GetWindowPos();
   ImVec2 cp0 = ImGui::GetCursorScreenPos();
-  int w = (int)floor(windowSize.x*0.8);
-  int h = (int)floor(windowSize.y*0.6-16);
+  int w = (int)floor(windowSize.x-6);
+  int h = (int)floor(windowSize.y-60);
   ImGui::Image((ImTextureID)((intptr_t)getCurrentPalette().paletteTexture()), ImVec2((float)w,(float)h));
   ImDrawList *l = ImGui::GetWindowDrawList();
   static char colorInput[10];
@@ -2423,9 +2423,9 @@ void displayColorPicker() {
   ImGui::PopItemWidth();
   for (int i = 0; i < MAXPALETTESLOTS; i++) {
     ImVec2 cp = ImGui::GetCursorScreenPos();
-    ImVec2 cp2 = ImGui::GetCursorScreenPos(); cp2.x += 20; cp2.y += 15;
-    cp.x += 22 * i;
-    cp2.x += 22 * i;
+    ImVec2 cp2 = ImGui::GetCursorScreenPos(); cp2.x += (windowSize.x-3) / MAXPALETTESLOTS - 2; cp2.y += windowSize.y-(cp2.y-windowPos.y);
+    cp.x += (windowSize.x-3) / MAXPALETTESLOTS * i;
+    cp2.x += (windowSize.x-3) / MAXPALETTESLOTS * i;
     if (ImGui::IsMouseHoveringRect(cp,cp2) && (mouseButtons & 1)) {
       getCurrentPalette().slot = i;
       toColorString(colorInput,getCurrentPalette().slotColors[i]);
@@ -3160,7 +3160,9 @@ void displayToolWindow() {
   static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(20))); isInit = false;
   ImGui::Begin("Tools", NULL, ImVec2(_WIDTH(180),_HEIGHT(310)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
   ImGui::PushItemWidth(70);
+#ifndef NOT_DOS
   ImGui::SliderFloat("Sensitivity", &getCurrentTool().mouseSpeed, MOUSESPEEDMIN, MOUSESPEEDMAX);
+#endif
   ImGui::PopItemWidth();
   ImGui::PushItemWidth(70);
   ImGui::Separator();

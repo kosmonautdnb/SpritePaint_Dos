@@ -7,15 +7,20 @@
 #define FDWIDTH 400
 #define FDHEIGHT 434
 #define FDXTAB 100
+#include "hashmap.hpp"
+#define spHashMap HashMap
+#define spHas(__s__,__v__) has(__v__)
 #else
 #include <imgui/imgui.h>
 #define FDWIDTH 700
 #define FDHEIGHT 434
 #define FDXTAB 400
+#include <map>
+#define spHashMap std::map
+#define spHas(__s__,__v__) find(__v__)!=(__s__).end()
 #endif
 
 #include "filedlg.hpp"
-#include "hashmap.hpp"
 
 extern int glFrameBufferWidth;
 extern int glFrameBufferHeight;
@@ -228,7 +233,7 @@ void FileDialog::filter() {
   }
   const char *s = items;
   String current;
-  HashMap<String, bool> set;
+  spHashMap<String, bool> set;
   int currentItem = 0;
   while (true) {
     char c = *s;
@@ -246,12 +251,12 @@ void FileDialog::filter() {
     }
     s++;
   }
-  if (set.has("*.*")) 
+  if (set.spHas(set,"*.*")) 
     return;
   for (i = files.size() - 1; i >= 0; i--) {
     if (files[i].attributes & DOS_ATTR_SUBDIR) continue;
     String here = toLower(files[i].name.extension.substr(1));
-    if (set.has(here)) continue;
+    if (set.spHas(set,here)) continue;
     files.erase(i,1);
   }
 }

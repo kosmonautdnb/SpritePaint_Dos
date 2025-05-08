@@ -7,8 +7,15 @@
 #ifndef NOT_DOS
 #include "gl.h"
 #include <i86.h>
+#include "array.hpp"
+#include "hashmap.hpp"
 #include "imguigl.hpp"
 #define ImTextureID void *
+#define spArray Array
+#define spInsert(__k__,__v__,__p__) insert(__v__,__p__)
+#define spErase(__k__,__b__,__l__) erase(__b__,__l__)
+#define spHashMap HashMap
+#define spHas(__s__,__v__) has(__v__)
 #else
 #include <imgui/imgui.h>
 #include <imgui/examples/opengl3_example/imgui_impl_glfw_gl3.h >
@@ -21,10 +28,15 @@ void glRefresh();
 void glDone();
 void ImGuiNewFrame();
 void InitImGui(int width, int height);
+#include <vector>
+#define spArray std::vector
+#define spInsert(__k__,__v__,__p__) insert(__k__.begin()+__p__,__v__)
+#define spErase(__k__,__b__,__l__) erase(__k__.begin()+__b__,__k__.begin()+__b__+__l__)
+#include <map>
+#define spHashMap std::map
+#define spHas(__s__,__v__) find(__v__)!=(__s__).end()
 #endif
 
-#include "array.hpp"
-#include "hashmap.hpp"
 #include "filedlg.hpp"
 #include "image.hpp"
 #include "psdimage.hpp"
@@ -401,7 +413,7 @@ class Sprite {
 public:
   int width,height;
   char name[10];
-  Array<unsigned int> bitmap;
+  spArray<unsigned int> bitmap;
   GLuint textureId;
   bool mark;
   bool mirrorPaintX;
@@ -611,7 +623,7 @@ public:
 class TestBox {
 public:
   int width,height;
-  Array<unsigned int> spriteIndices;
+  spArray<unsigned int> spriteIndices;
   TestBox() {
     width = 2;
     height = 2;
@@ -620,7 +632,7 @@ public:
   }
 };
 
-Array<Sprite> sprites;
+spArray<Sprite> sprites;
 SpriteCanvas spriteCanvas;
 Palette palette;
 Tool tool;
@@ -628,7 +640,7 @@ SpriteSheet spriteSheet;
 Animation animation;
 TestBox testBox;
 
-Array<Sprite> sprites_undo;
+spArray<Sprite> sprites_undo;
 SpriteCanvas spriteCanvas_undo;
 Palette palette_undo;
 Tool tool_undo;
@@ -1312,12 +1324,6 @@ void handleColorGet(int mx, int my) {
 int toolWas = 0;
 int mouseButtonsWas = 0;
 
-int doublePixel2(int mx) {
-  if (getCurrentSpriteCanvas().doublePixel)
-    mx = (mx & (~1))-1;
-  return mx;
-}
-
 int doublePixel3(int mx) {
   if (getCurrentSpriteCanvas().doublePixel)
     mx = (mx & (~1))+1;
@@ -1674,7 +1680,7 @@ void handleToolMove(int mx, int my) {
 
     if (mouseButtons & 1) {
       if (mode == 0) {
-        firstX = mx;
+        firstX = doublePixel(mx);
         firstY = my;
         mode++;
       }
@@ -1682,31 +1688,20 @@ void handleToolMove(int mx, int my) {
         mode = 3;
         return;
       }
-      int secondX = doublePixel2(mx);
+      int secondX = doublePixel(mx);
       int secondY = my;
       int startX = firstX;
       int startY = firstY;
       int endX = secondX;
       int endY = secondY;
-      if (startX>endX) {int t = startX; startX = endX; endX = t;}
+      if (startX>endX) {int t = startX; startX = doublePixel(endX); endX = t;}
       if (startY>endY) {int t = startY; startY = endY; endY = t;}
       memset(overlay,0,sizeof(overlay));
       unsigned int col = 0x7fffffff;
-      if (getCurrentTool().filled) {
-        for (int x = startX; x <= endX; x++) {
+      for (int x = startX; x <= doublePixel3(endX); x++) {
           for (int y = startY; y <= endY; y++) {
               overlay[x+y*MAXSPRITEWIDTH]=col;
           }
-        }
-      } else {
-        for (int x = startX; x <= endX; x++) {
-          plot(overlay,x,startY,col);
-          plot(overlay,x,endY,col);
-        }
-        for (int y = startY; y <= endY; y++) {
-          plot(overlay,startX,y,col);
-          plot(overlay,endX,y,col);
-        }
       }
       getCurrentSprite().update();
       getCurrentSprite().texture();
@@ -1715,7 +1710,7 @@ void handleToolMove(int mx, int my) {
       if (mode == 1) {
         mode = 2;
         makeUndoPoint();
-        int secondX = doublePixel2(mx);
+        int secondX = doublePixel(mx);
         int secondY = my;
         int startX = firstX;
         int startY = firstY;
@@ -1724,10 +1719,10 @@ void handleToolMove(int mx, int my) {
         if (startX>endX) {int t = startX; startX = endX; endX = t;}
         if (startY>endY) {int t = startY; startY = endY; endY = t;}
         unsigned int *k2 = &getCurrentSprite().bitmap[0];
-        clipBoardW = endX-startX+1;
-        clipBoardH = endY-startY+1;
+        clipBoardW = doublePixel3(endX-startX)+1;
+        clipBoardH = doublePixel3(endY-startY)+1;
         for (int y = startY; y <= endY; y++) {
-          for (int x = startX; x <= endX; x++) {
+          for (int x = startX; x <= doublePixel3(endX); x++) {
             clipBoard[x-startX+(y-startY)*MAXSPRITEWIDTH] = k2[x+y*MAXSPRITEWIDTH];
             k2[x+y*MAXSPRITEWIDTH] = 0x00000000;
           }
@@ -1794,7 +1789,7 @@ void handleToolCopy(int mx, int my) {
 
     if (mouseButtons & 1) {
       if (mode == 0) {
-        firstX = mx;
+        firstX = doublePixel(mx);
         firstY = my;
         mode++;
       }
@@ -1802,7 +1797,7 @@ void handleToolCopy(int mx, int my) {
         mode = 3;
         return;
       }
-      int secondX = doublePixel2(mx);
+      int secondX = doublePixel(mx);
       int secondY = my;
       int startX = firstX;
       int startY = firstY;
@@ -1812,29 +1807,18 @@ void handleToolCopy(int mx, int my) {
       if (startY>endY) {int t = startY; startY = endY; endY = t;}
       memset(overlay,0,sizeof(overlay));
       unsigned int col = 0x7fffffff;
-      if (getCurrentTool().filled) {
-        for (int x = startX; x <= endX; x++) {
-          for (int y = startY; y <= endY; y++) {
-              overlay[x+y*MAXSPRITEWIDTH]=col;
-          }
+        for (int x = startX; x <= doublePixel3(endX); x++) {
+            for (int y = startY; y <= endY; y++) {
+                overlay[x+y*MAXSPRITEWIDTH]=col;
+            }
         }
-      } else {
-        for (int x = startX; x <= endX; x++) {
-          plot(overlay,x,startY,col);
-          plot(overlay,x,endY,col);
-        }
-        for (int y = startY; y <= endY; y++) {
-          plot(overlay,startX,y,col);
-          plot(overlay,endX,y,col);
-        }
-      }
       getCurrentSprite().update();
       getCurrentSprite().texture();
       memset(overlay,0,sizeof(overlay));
     } else {
       if (mode == 1) {
         mode = 2;
-        int secondX = doublePixel2(mx);
+        int secondX = doublePixel(mx);
         int secondY = my;
         int startX = firstX;
         int startY = firstY;
@@ -1843,10 +1827,10 @@ void handleToolCopy(int mx, int my) {
         if (startX>endX) {int t = startX; startX = endX; endX = t;}
         if (startY>endY) {int t = startY; startY = endY; endY = t;}
         unsigned int *k2 = &getCurrentSprite().bitmap[0];
-        clipBoardW = endX-startX+1;
-        clipBoardH = endY-startY+1;
+        clipBoardW = doublePixel3(endX-startX)+1;
+        clipBoardH = doublePixel3(endY-startY)+1;
         for (int y = startY; y <= endY; y++) {
-          for (int x = startX; x <= endX; x++) {
+          for (int x = startX; x <= doublePixel3(endX); x++) {
             clipBoard[x-startX+(y-startY)*MAXSPRITEWIDTH] = k2[x+y*MAXSPRITEWIDTH];
             //k2[x+y*MAXSPRITEWIDTH] = 0x00000000;
           }
@@ -1929,7 +1913,7 @@ void handleToolScale(int mx, int my) {
 
     if (mouseButtons & 1) {
       if (mode == 0) {
-        firstX = mx;
+        firstX = doublePixel(mx);
         firstY = my;
         mode++;
       }
@@ -1937,7 +1921,7 @@ void handleToolScale(int mx, int my) {
         mode = 3;
         return;
       }
-      int secondX = doublePixel2(mx);
+      int secondX = doublePixel(mx);
       int secondY = my;
       int startX = firstX;
       int startY = firstY;
@@ -1947,7 +1931,7 @@ void handleToolScale(int mx, int my) {
       if (startY>endY) {int t = startY; startY = endY; endY = t;}
       memset(overlay,0,sizeof(overlay));
       unsigned int col = 0x7fffffff;
-      for (int x = startX; x <= endX; x++) {
+      for (int x = startX; x <= doublePixel3(endX); x++) {
         for (int y = startY; y <= endY; y++) {
             overlay[x+y*MAXSPRITEWIDTH]=col;
         }
@@ -1958,7 +1942,7 @@ void handleToolScale(int mx, int my) {
     } else {
       if (mode == 1) {
         mode = 2;
-        int secondX = doublePixel2(mx);
+        int secondX = doublePixel(mx);
         int secondY = my;
         int startX = firstX;
         int startY = firstY;
@@ -1970,7 +1954,7 @@ void handleToolScale(int mx, int my) {
         clipBoardW = endX-startX+1;
         clipBoardH = endY-startY+1;
         for (int y = startY; y <= endY; y++) {
-          for (int x = startX; x <= endX; x++) {
+          for (int x = startX; x <= doublePixel3(endX); x++) {
             clipBoard[x-startX+(y-startY)*MAXSPRITEWIDTH] = k2[x+y*MAXSPRITEWIDTH];
             k2[x+y*MAXSPRITEWIDTH] = 0x00000000;
           }
@@ -1979,7 +1963,7 @@ void handleToolScale(int mx, int my) {
         getCurrentSprite().texture();
       }
       if (mode == 2) {
-        int secondX = doublePixel2(mx);
+        int secondX = doublePixel(mx);
         int secondY = my;
         int startX = firstX;
         int startY = firstY;
@@ -1990,7 +1974,7 @@ void handleToolScale(int mx, int my) {
 
         memset(overlay,0,sizeof(overlay));
         for (int y = startY; y <= endY; y++) {
-          for (int x = startX; x <= endX; x++) {
+          for (int x = startX; x <= doublePixel3(endX); x++) {
             int x2 = (x - startX)*clipBoardW/(endX-startX+1);
             int y2 = (y - startY)*clipBoardH/(endY-startY+1);
             if (x >= 0 && x < w && y >= 0 && y < h)
@@ -2005,7 +1989,7 @@ void handleToolScale(int mx, int my) {
       }
       if (mode == 3) {
         makeUndoPoint();
-        int secondX = doublePixel2(mx);
+        int secondX = doublePixel(mx);
         int secondY = my;
         int startX = firstX;
         int startY = firstY;
@@ -2015,7 +1999,7 @@ void handleToolScale(int mx, int my) {
         if (startY>endY) {int t = startY; startY = endY; endY = t;}
         unsigned int *k2 = &getCurrentSprite().bitmap[0];
         for (int y = startY; y <= endY; y++) {
-          for (int x = startX; x <= endX; x++) {
+          for (int x = startX; x <= doublePixel3(endX); x++) {
             int x2 = (x - startX)*clipBoardW/(endX-startX+1);
             int y2 = (y - startY)*clipBoardH/(endY-startY+1);
             if (x >= 0 && x < w && y >= 0 && y < h)
@@ -2104,7 +2088,7 @@ void handleToolRotate(int mx, int my) { // handleToolTransform
         mode = 0;
         return;
       }
-      int secondX = doublePixel2(mx);
+      int secondX = doublePixel(mx);
       int secondY = my;
       int startX = firstX;
       int startY = firstY;
@@ -2114,7 +2098,7 @@ void handleToolRotate(int mx, int my) { // handleToolTransform
       if (startY>endY) {int t = startY; startY = endY; endY = t;}
       memset(overlay,0,sizeof(overlay));
       unsigned int col = 0x7fffffff;
-      for (int x = startX; x <= endX; x++) {
+      for (int x = startX; x <= doublePixel3(endX); x++) {
         for (int y = startY; y <= endY; y++) {
             overlay[x+y*MAXSPRITEWIDTH]=col;
         }
@@ -2126,7 +2110,7 @@ void handleToolRotate(int mx, int my) { // handleToolTransform
       if (mode == 1) {
         mode = 2;
         makeUndoPoint();
-        int secondX = doublePixel2(mx);
+        int secondX = doublePixel(mx);
         int secondY = my;
         int startX = firstX;
         int startY = firstY;
@@ -2135,12 +2119,12 @@ void handleToolRotate(int mx, int my) { // handleToolTransform
         if (startX>endX) {int t = startX; startX = endX; endX = t;}
         if (startY>endY) {int t = startY; startY = endY; endY = t;}
         unsigned int *k2 = &getCurrentSprite().bitmap[0];
-        clipBoardW = endX-startX+1;
-        clipBoardH = endY-startY+1;
+        clipBoardW = doublePixel3(endX-startX)+1;
+        clipBoardH = doublePixel3(endY-startY)+1;
         centerX = (endX+startX)*0.5;
         centerY = (endY+startY)*0.5;
         for (int y = startY; y <= endY; y++) {
-          for (int x = startX; x <= endX; x++) {
+          for (int x = startX; x <= doublePixel3(endX); x++) {
             clipBoard[x-startX+(y-startY)*MAXSPRITEWIDTH] = k2[x+y*MAXSPRITEWIDTH];
             k2[x+y*MAXSPRITEWIDTH] = 0x00000000;
           }
@@ -2228,7 +2212,7 @@ void handleTool(int mx, int my) {
 
 int lastMx = 0;
 int lastMy = 0;
-Array<unsigned int> before;
+spArray<unsigned int> before;
 void displaySpriteEditField() {
   ImGui::SetNextWindowPos(ImVec2(_WIDTH(180),_HEIGHT(20)));
   coordX = 0;
@@ -2618,7 +2602,7 @@ bool importSpriteAtlas(const char *fileName) {
           }
           k.update();
           k.texture();
-          sprites.insert(k,toInsert);
+          sprites.spInsert(sprites,k,toInsert);
           toInsert++;
         }
         finished = true;
@@ -2637,7 +2621,7 @@ bool importSpriteAtlas(const char *fileName) {
   return true;
 }
 
-HashMap<int,String> currentPaths;
+spHashMap<int,String> currentPaths;
 
 RGBAImage loadMyFormats(const char *fileName) {
   RGBAImage r;
@@ -2798,7 +2782,7 @@ bool importSpritesCounter(const char *fileName) {
     }
     ImGui::SameLine();
     if (ImGui::Button("Proceed##Proceed66")) {
-      Array<Sprite> ins;
+      spArray<Sprite> ins;
       for (int i = firstSprite; i <= lastSprite; i++) {
         char buffer[10];
         sprintf(buffer,"%04d",i);
@@ -2818,7 +2802,7 @@ bool importSpritesCounter(const char *fileName) {
       if (!someError) {
         if (destSprite<sprites.size()) {
           for (int i = lastSprite-firstSprite; i>= 0; i--) {
-              sprites.insert(ins[i],destSprite);
+              sprites.spInsert(sprites,ins[i],destSprite);
               sprites[destSprite].update();
               sprites[destSprite].texture();
           }
@@ -2971,7 +2955,7 @@ bool importPSDLayers(const char *fileName) {
     }
     ImGui::SameLine();
     if (ImGui::Button("Proceed##Proceed77")) {
-      Array<Sprite> ins;
+      spArray<Sprite> ins;
       for(int i = layer0; i <= layerN; i++) {
         int ofsX,ofsY,sizX,sizY;
         unsigned int *imagedata=(unsigned int*)img.GetLayerData(i, sizX, sizY, ofsX, ofsY);
@@ -2990,7 +2974,7 @@ bool importPSDLayers(const char *fileName) {
       }
       if (destSprite<sprites.size()) {
         for (int i = layerN-layer0; i>= 0; i--) {
-            sprites.insert(ins[i],destSprite);
+            sprites.spInsert(sprites,ins[i],destSprite);
             sprites[destSprite].update();
             sprites[destSprite].texture();
         }
@@ -3058,7 +3042,7 @@ void displayLoadSave() {
 
   FileDialog *f = new FileDialog();
   f->open(isLoading,"*.*\0\0",loadPreviewPicture);
-  if (currentPaths.has(loadSave))
+  if (currentPaths.spHas(currentPaths,loadSave))
     f->setCurrentPath(currentPaths[loadSave]);
 
   bool finished;
@@ -3282,7 +3266,7 @@ void displaySpriteSheet() {
   ImGui::InputInt("Nr",&getCurrentSpriteSheet().xScroll);
   getCurrentSpriteSheet().xScroll = clamp(getCurrentSpriteSheet().xScroll,0,(int)sprites.size()-1);
   if (ImGui::Button("Insert")) {
-    sprites.insert(Sprite(),getCurrentSpriteCanvas().spriteNr);
+    sprites.spInsert(sprites,Sprite(),getCurrentSpriteCanvas().spriteNr);
     int i = getCurrentSpriteCanvas().spriteNr;
     sprites[i].update();
     sprites[i].texture();
@@ -3294,7 +3278,7 @@ void displaySpriteSheet() {
   if (!sprites.empty()) {
     if (ImGui::Button("Erase")) {
       if (sprites.size()>1) {
-        sprites.erase(getCurrentSpriteCanvas().spriteNr,1);
+        sprites.spErase(sprites,getCurrentSpriteCanvas().spriteNr,1);
       }
     }
     ImGui::SameLine();
@@ -3607,7 +3591,7 @@ void displayDeleteSprites() {
     }             
     ImGui::SameLine();
     if (ImGui::Button("Proceed##Proceed22")) {
-      sprites.erase(deleteStartSprite,deleteEndSprite-deleteStartSprite+1);
+      sprites.spErase(sprites,deleteStartSprite,deleteEndSprite-deleteStartSprite+1);
       finished = true;
     }             
     ImGui::End();
@@ -3650,13 +3634,13 @@ void displayCopySprites() {
           sprites.push_back(sprites[i]);
         }
       } else {
-        Array<Sprite> k;
+        spArray<Sprite> k;
         {for(int i = copyEndSprite; i>= copyStartSprite; i--) {
           sprites[i].update();
           k.push_back(sprites[i]);
         }}
         {for(int i = 0; i< copyEndSprite-copyStartSprite+1; i++) {
-          sprites.insert(k[i],spriteNr);
+          sprites.spInsert(sprites,k[i],spriteNr);
         }}
       }
       finished = true;

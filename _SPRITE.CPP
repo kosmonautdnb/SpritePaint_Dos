@@ -1227,9 +1227,9 @@ void displayMenuBar() {
         ImGui::EndMenu();
       }
 #ifndef NOT_DOS
-      ImGui::Text("\t\t\t\t\t%02d|%02d %s  FPS/%d",coordX,coordY,currentTimeString().c_str(),(int)fps);
+      ImGui::Text("\t\t\t\t\t%02d|%02d %d|%d %s  FPS/%d",coordX,coordY,getCurrentSpriteCanvas().spriteNr,sprites.size(),currentTimeString().c_str(),(int)fps);
 #else
-      ImGui::Text("\t\t\t\t\t%02d|%02d ", coordX, coordY);
+      ImGui::Text("\t\t\t\t\t%02d|%02d %d|%d", coordX, coordY,getCurrentSpriteCanvas().spriteNr, sprites.size());
 #endif
 
       ImGui::EndMainMenuBar();
@@ -2422,6 +2422,8 @@ void displayColorPicker() {
     getCurrentPalette().slotColors[getCurrentPalette().slot] = color;
     getCurrentPalette().update();
   }
+  ImGui::SameLine();
+  ImGui::Text("#%02x",colIdx);
   ImGui::PopItemWidth();
   for (int i = 0; i < MAXPALETTESLOTS; i++) {
     ImVec2 cp = ImGui::GetCursorScreenPos();
@@ -3207,6 +3209,22 @@ void displayToolWindow() {
             getCurrentSprite().bitmap[x+y*MAXSPRITEWIDTH] = getCurrentTool().color1;
         }
       }
+      getCurrentSprite().update();
+      getCurrentSprite().texture();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("On all sprites")) {
+      for (int i = 0; i < sprites.size(); i++) {
+        Sprite &a = sprites[i];
+        for (int y = 0; y < a.height; y++) {
+          for (int x = 0; x < a.width; x++) { 
+            unsigned int c = a.bitmap[x+y*MAXSPRITEWIDTH];
+            if (c == getCurrentTool().color0)
+              a.bitmap[x+y*MAXSPRITEWIDTH] = getCurrentTool().color1;
+          }
+        }
+      }
+      updateAll();
     }
     ImDrawList *l = ImGui::GetWindowDrawList();
     ImVec2 cp0 = ImGui::GetCursorScreenPos();
@@ -3263,7 +3281,6 @@ void displayToolWindow() {
 void displaySpriteSheet() {
   static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(180),_HEIGHT(405))); isInit = false;
   ImGui::Begin("Sprites", NULL, ImVec2(_WIDTH(460),_HEIGHT(75)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
-
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(0,0));
   ImGui::BeginChild("SheetConfig",ImVec2(90,55));
   ImGui::PushItemWidth(80);
@@ -3305,7 +3322,7 @@ void displaySpriteSheet() {
     if (getCurrentSpriteSheet().halveSize) wh/=2;
     ImGui::SameLine();
     ImVec2 cp0 = ImGui::GetCursorScreenPos();
-    if (cp0.x > XRES) {
+    if (cp0.x > XRES - wh) {
       if (doubleLinePainted) 
         break;
       if (getCurrentSpriteSheet().halveSize) {

@@ -610,6 +610,7 @@ public:
   bool playing;
   double playPos;
   int playedFrame;
+  bool flipping;
   Animation() {
     speed = 8;
     frame0 = 0;
@@ -617,6 +618,7 @@ public:
     playing = false;
     playPos = 0;
     playedFrame=0;
+    flipping = false;
   }
 };
 
@@ -3465,6 +3467,7 @@ void displayAnimation() {
       getCurrentAnimation().playPos = 0;
       getCurrentAnimation().playing = true;
     }
+    ImGui::Checkbox("Bounce##Flip1",&getCurrentAnimation().flipping);
   } else {
     if (ImGui::Button("Stop##Stop1")) {
       getCurrentSpriteCanvas().spriteNr=playedAt;
@@ -3476,7 +3479,19 @@ void displayAnimation() {
   }
   if (getCurrentAnimation().playing) {
     int delta = getCurrentAnimation().frameN-getCurrentAnimation().frame0;
-    getCurrentAnimation().playedFrame=(((int)floor(getCurrentAnimation().playPos))%(abs(delta)+1))*sign(delta)+getCurrentAnimation().frame0;
+    int d;
+    if (!getCurrentAnimation().flipping) {
+      d = (((int)floor(getCurrentAnimation().playPos))%(abs(delta)+1))*sign(delta);
+    } else {
+      int a = abs(delta)*2;
+      int d2 = (((int)floor(getCurrentAnimation().playPos))%a);
+      if (d2 <= abs(delta)) 
+        d = d2;
+      else
+        d = abs(delta)-(d2-abs(delta));
+      d *= sign(delta);
+    }
+    getCurrentAnimation().playedFrame=d+getCurrentAnimation().frame0;
     ImGui::Text("Frame:%d",(int)getCurrentAnimation().playedFrame);
   }
   ImGui::End();

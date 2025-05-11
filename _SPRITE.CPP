@@ -61,9 +61,9 @@ bool recordVideo=false;
 */
 
 #define MINSPRITEWIDTH 1
-#define MAXSPRITEWIDTH 96
 #define MINSPRITEHEIGHT 1
-#define MAXSPRITEHEIGHT 96
+#define MAXSPRITEWIDTH 128
+#define MAXSPRITEHEIGHT 128
 #define MINSPRITEZOOM 1.0
 #define MAXSPRITEZOOM 20
 #define MAXPALETTECOLORS 256
@@ -373,6 +373,7 @@ enum {
   LoadSave_ImportSpritesCounter = 13,
   LoadSave_ExportSpritesCounter = 14,
   LoadSave_ImportPSDLayers = 15,
+  LoadSave_ImportAnimatedGif = 16,
 };
 
 int loadSave = LoadSave_None;
@@ -1191,6 +1192,7 @@ void displayMenuBar() {
       if (ImGui::BeginMenu("Sprites")) {
         if (ImGui::MenuItem("Import sprite atlas [png]")) loadSave = LoadSave_ImportSpriteAtlas;
         if (ImGui::MenuItem("Export sprite sheet [png]")) loadSave = LoadSave_ExportSprites;
+        if (ImGui::MenuItem("Import from animated [gif]")) loadSave = LoadSave_ImportAnimatedGif;
         ImGui::Separator();
         if (ImGui::MenuItem("Import sprites [pngs/counter]")) loadSave = LoadSave_ImportSpritesCounter;
         if (ImGui::MenuItem("Export sprites [pngs/counter]")) loadSave = LoadSave_ExportSpritesCounter;
@@ -3002,6 +3004,127 @@ bool importPSDLayers(const char *fileName) {
   return true;
 }
 
+bool importAnimatedGif(const char *fileName) {
+
+  FILE *in = fopen(fileName,"rb");
+  if (in == NULL) {someError = true; return false;}
+  fseek(in,0,SEEK_END);
+  int64_t fileSize = ftell(in);
+  fseek(in,0,SEEK_SET);
+  unsigned char *arr = new unsigned char[fileSize];
+  fread(arr,1,fileSize,in);
+  fclose(in);                                                
+  int xg,yg,zg,compg;
+  unsigned char *gifData = stbi_load_gif_from_memory(arr, fileSize, NULL, &xg, &yg, &zg, &compg, 4);
+  delete[] arr;
+  if (gifData==NULL) {someError = true; return false;}
+  if (xg <= 0 || xg > MAXSPRITEWIDTH) {delete[] gifData; someError = true; return false;}
+  if (yg <= 0 || yg > MAXSPRITEHEIGHT) {delete[] gifData; someError = true; return false;}
+  if (zg <= 0) {delete[] gifData; someError = true; return false;}
+
+  float zoom = 3.0;
+  int frame = 0;
+  int frameWidth = xg;
+  int frameHeight = yg;
+  int frameCount = zg;
+  int destSprite = 0;
+  int layer0 = 0;
+  int layerN = frameCount-1;
+  bool finished = false;
+  bool first = true;
+  unsigned int textureId = 0;
+  bgPixels = false;
+  do
+  {
+    ImGuiNewFrame();
+
+    ImGui::Begin(("Preview "+String(frameWidth)+"x"+String(frameHeight)+"##Preview177").c_str());
+    ImGui::PushItemWidth(64);
+    ImGui::InputFloat("Zoom##Zoom177",&zoom,0.5);
+    ImGui::InputInt("Frame##Layer177",&frame,1);
+    ImGui::PopItemWidth();
+    zoom = clamp(zoom,0.1f,16.0f);
+    frame = clamp(frame,0,frameCount-1);      
+    unsigned int *frameData=(unsigned int*)&gifData[frameWidth*frameHeight*4*frame];
+    if (textureId != 0) glDeleteTextures(1,&textureId);
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,frameWidth,frameHeight,0,GL_RGBA,GL_UNSIGNED_BYTE,frameData);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    ImVec2 dp=ImVec2(frameWidth*zoom*getCurrentSpriteCanvas().aspect,frameHeight*zoom);
+    ImVec2 cp0 = ImGui::GetCursorScreenPos();
+    ImVec2 cp1 = cp0;
+    cp0.x += dp.x;
+    cp0.y += dp.y;
+    ImGui::Image((ImTextureID)((intptr_t)textureId),dp);
+    ImDrawList *l = ImGui::GetWindowDrawList();
+    l->AddRect(cp0,cp1,0xff202020,0);
+    ImGui::End();
+
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
+    first = false;
+    ImGui::SetNextWindowFocus();
+    ImGui::Begin("Import Animated Gif##ImportAnimatedGif177");
+    ImGui::PushItemWidth(64);
+    ImGui::InputInt("InsertTo##InsertTo177", &destSprite,0);
+    ImGui::Separator();
+    ImGui::Text("Last Frame:%d",frameCount-1);
+    ImGui::InputInt("Frame0##Layer0177", &layer0,0);
+    ImGui::InputInt("FrameN##LayerN177", &layerN,0);
+    ImGui::Separator();
+    ImGui::PopItemWidth();
+    destSprite = clamp(destSprite,0,(int)sprites.size());
+    layer0 = clamp(layer0,0,frameCount-1);
+    layerN = clamp(layerN,layer0,frameCount-1);
+    if (ImGui::Button("Cancel##Cancel177")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
+      finished = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Proceed##Proceed177")) {
+      spArray<Sprite> ins;
+      for(int i = layer0; i <= layerN; i++) {
+        Sprite k;
+        k.width = frameWidth;
+        k.height = frameHeight;
+        unsigned int *l = (unsigned int*)&gifData[frameWidth*frameHeight*4*i];
+        for (int y = 0; y < frameHeight; y++) {
+          for (int x = 0; x < frameWidth; x++) {
+            k.bitmap[x+y*MAXSPRITEWIDTH]=l[x+y*frameWidth];
+          }
+        }
+        ins.push_back(k);
+      }
+      if (destSprite<sprites.size()) {
+        for (int i = layerN-layer0; i>= 0; i--) {
+            sprites.spInsert(sprites,ins[i],destSprite);
+            sprites[destSprite].update();
+            sprites[destSprite].texture();
+        }
+      } else {
+        for (int i = 0; i <= layerN-layer0; i++) {
+            sprites.push_back(ins[i]);
+            sprites.back().update();
+            sprites.back().texture();
+        }
+      }
+      finished = true;
+    }             
+    ImGui::End();
+    render();
+  
+    refreshGraphics();
+  } while(!finished);
+
+  delete[] gifData;
+  if (textureId != 0) glDeleteTextures(1,&textureId);
+
+  return true;
+}
+
 unsigned int previewPictureId=0;
 int previewPictureWidth=1;
 int previewPictureHeight=1;
@@ -3112,6 +3235,7 @@ void displayLoadSave() {
     case LoadSave_ImportSpritesCounter: {importSpritesCounter(fname.c_str());} break;
     case LoadSave_ExportSpritesCounter: {exportSpritesCounter(fname.c_str());} break;
     case LoadSave_ImportPSDLayers: {importPSDLayers(fname.c_str());} break;
+    case LoadSave_ImportAnimatedGif: {importAnimatedGif(fname.c_str());} break;
     }
   }
 
@@ -3696,7 +3820,7 @@ void displaySomeError() {
     if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
     first = false;
     ImGui::Begin("Some Error##SomeError55");
-    ImGui::Text("!!Some Error happened!!\nThis may be a file write/read error,\nor something other that\ndidn't go well.\nMaybe sprite size too big?");
+    ImGui::Text("!!Some Error happened!!\nThis may be a file write/read error,\nor something other that\ndidn't go well.\nMaybe sprite size too big?\nMaximum Size=%dx%d",MAXSPRITEWIDTH,MAXSPRITEHEIGHT);
     if (ImGui::Button("Ok##Proceed55")) finished = true;
     ImGui::End();
     render();

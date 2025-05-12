@@ -5,10 +5,10 @@
 #define MAXMAPWIDTH 4096
 #define MAXMAPHEIGHT 4096
 
-#define MAPTILESINX 32
-#define MAPTILESINY 32
-#define MAPTILEWIDTH ((int)(_HEIGHT(32)))
-#define MAPTILEHEIGHT ((int)(_HEIGHT(32)))
+#define MAPTILESINX _WIDTH(80)
+#define MAPTILESINY _HEIGHT(52)
+#define MAPTILEWIDTH 32
+#define MAPTILEHEIGHT 32
 
 enum {
   MAPMODAL_NONE = 0,
@@ -80,25 +80,26 @@ public:
     if (mark) {
       glDeleteTextures(1,&textureId);
       textureId = 0;
+      mark = false;
     }
     if (textureId == 0) {
       spHashMap<int,int> idToSpriteNr;
-      for (int i = 0; i < sprites.size(); i++) {
+      for (int i = 0; i < (int)sprites.size(); i++) {
         idToSpriteNr[sprites[i].getId()]=i;
       }
       unsigned int *temp = new unsigned int[MAPTILESINX*MAPTILEWIDTH*MAPTILESINY*MAPTILEHEIGHT];
       memset(temp,0,MAPTILESINX*MAPTILEWIDTH*MAPTILESINY*MAPTILEHEIGHT*4);
+
       for (int tx = 0; tx < MAPTILESINX; tx++) {
-        for (int ty = 0; ty < MAPTILESINX; ty++) {
+        for (int ty = 0; ty < MAPTILESINY; ty++) {
           int tx2 = tx + scrollX;
           int ty2 = ty + scrollY;
           if (tx2<0||ty2<0||tx2>=width||ty2>=height) {
             for (int my = 0; my < MAPTILEHEIGHT; my++) {
+              int y2 = ty*MAPTILEHEIGHT+my;
               for (int mx = 0; mx < MAPTILEWIDTH; mx++) {
                 int x2 = tx*MAPTILEWIDTH+mx;
-                int y2 = ty*MAPTILEHEIGHT+my;
-                unsigned int &t = temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)];
-                t = 0x80101010-(((tx+scrollX)^(ty+scrollY))&3)*0x00020202;
+                temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)] = 0x80101010-(((tx+scrollX)^(ty+scrollY))&3)*0x00020202;
               }
             }
             continue;
@@ -106,11 +107,10 @@ public:
           const MapTile &t = tiles[tx2+ty2*width];
           if (t.tileIds.empty()) {
             for (int my = 0; my < MAPTILEHEIGHT; my++) {
+              int y2 = ty*MAPTILEHEIGHT+my;
               for (int mx = 0; mx < MAPTILEWIDTH; mx++) {
                 int x2 = tx*MAPTILEWIDTH+mx;
-                int y2 = ty*MAPTILEHEIGHT+my;
-                unsigned int &t = temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)];
-                t = 0x80803060-(((tx+scrollX)^(ty+scrollY))&3)*0x00201020;
+                temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)] = 0x80803060-(((tx+scrollX)^(ty+scrollY))&3)*0x00201020;
               }
             }
             continue;
@@ -118,11 +118,10 @@ public:
           int tileId = t.tileIds[0];
           if (!(idToSpriteNr.spHas(idToSpriteNr,tileId))) {
             for (int my = 0; my < MAPTILEHEIGHT; my++) {
+              int y2 = ty*MAPTILEHEIGHT+my;
               for (int mx = 0; mx < MAPTILEWIDTH; mx++) {
                 int x2 = tx*MAPTILEWIDTH+mx;
-                int y2 = ty*MAPTILEHEIGHT+my;
-                unsigned int &t = temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)];
-                t = 0xffff00ff;
+                temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)] = 0xffff00ff;
               }
             }
             continue;
@@ -131,13 +130,12 @@ public:
           spriteNr = clamp(spriteNr,0,(int)sprites.size()-1);
           Sprite &s = sprites[spriteNr];
           for (int my = 0; my < MAPTILEHEIGHT; my++) {
+            int y2 = ty*MAPTILEHEIGHT+my;
+            int y3 = my * s.height / MAPTILEHEIGHT;
             for (int mx = 0; mx < MAPTILEWIDTH; mx++) {
-              int x3 = mx * s.width / MAPTILEWIDTH;
-              int y3 = my * s.height / MAPTILEHEIGHT;
               int x2 = tx*MAPTILEWIDTH+mx;
-              int y2 = ty*MAPTILEHEIGHT+my;
-              unsigned int &t = temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)];
-              t = s.bitmap[x3+y3*MAXSPRITEWIDTH];
+              int x3 = mx * s.width / MAPTILEWIDTH;
+              temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)] = s.bitmap[x3+y3*MAXSPRITEWIDTH];
             }
           }
         }
@@ -160,7 +158,7 @@ public:
   int first;
   int spriteNr;
   TileSelect() {
-    first = 0;
+    first = -1;
     spriteNr = 0;
   }
 };
@@ -197,17 +195,18 @@ void displayMenuBar_mapPainter() {
         ImGui::EndMenu();
       }
       if (ImGui::BeginMenu("Map")) {
-        if (ImGui::MenuItem("Canvas")) {
+        if (ImGui::MenuItem("Re-Canvas")) {
           mapModal = MAPMODAL_CANVAS;
         }
         if (ImGui::MenuItem("Fill")) {
           MapTile toFillWith;
           int spriteNr = getCurrentTileSelect().spriteNr;
-          spriteNr = clamp(spriteNr,0,(int)sprites.size()-1);
-          toFillWith.tileIds.push_back(sprites[spriteNr].getId());
+          if (spriteNr>=0&&spriteNr<(int)sprites.size())
+            toFillWith.tileIds.push_back(sprites[spriteNr].getId());
           for (int i = 0; i < getCurrentMap().width*getCurrentMap().height; i++) {
             getCurrentMap().tiles[i] = toFillWith;
           }
+          updateMap();
         }
         ImGui::EndMenu();
       }
@@ -240,13 +239,18 @@ void paintLine(int sx, int sy, int ex, int ey) {
   for (int k = 0; k <= di; k++) {
     int x = (int)floor((ex-sx)*k/di+sx);
     int y = (int)floor((ey-sy)*k/di+sy);
-    if (x>=0&&x<w&&y>=0&&x<h) {
+    if (x>=0&&x<w&&y>=0&&y<h) {
+      updateMap();
       int adr = x + y * w;
-      if (getCurrentMap().tiles[adr].tileIds.empty()) getCurrentMap().tiles[adr].tileIds.push_back(0);
       int spr = getCurrentTileSelect().spriteNr;
-      spr = clamp(spr,0,(int)sprites.size()-1);
-      int tileId =  sprites[spr].getId();
-      getCurrentMap().tiles[adr].tileIds[0] = tileId;
+      if (spr >= 0 && spr < (int)sprites.size()) {
+        int tileId =  sprites[spr].getId();
+        if (getCurrentMap().tiles[adr].tileIds.empty()) 
+          getCurrentMap().tiles[adr].tileIds.push_back(0);
+        getCurrentMap().tiles[adr].tileIds[0] = tileId;
+      } else {
+        getCurrentMap().tiles[adr].tileIds.clear();
+      }
     }
   }
 }
@@ -259,8 +263,11 @@ void getAtSelected() {
 
   if (x>=0&&x<w&&y>=0&&x<h) {
     int adr = x + y * w;
-    if (getCurrentMap().tiles[adr].tileIds.empty()) return;
-    for (int i = 0; i < sprites.size(); i++) {
+    if (getCurrentMap().tiles[adr].tileIds.empty()) {
+      getCurrentTileSelect().spriteNr = -1;
+      return;
+    }
+    for (int i = 0; i < (int)sprites.size(); i++) {
       if (sprites[i].getId()==getCurrentMap().tiles[adr].tileIds[0]) {
         getCurrentTileSelect().spriteNr = i;
         return;
@@ -276,19 +283,20 @@ void displayMapWindow() {
   ImGui::PushItemWidth(64);
   static float zoom = 1.0;
   ImGui::InputFloat("Zoom##Zoom123",&zoom,0.25);
-  zoom = clamp(zoom,0.75f,16.0f);
+  zoom = clamp(zoom,0.25f,16.0f);
   ImGui::SameLine();
-  ImGui::InputInt("MapX##MapX123",&getCurrentMap().scrollX);
+  if (ImGui::InputInt("MapX##MapX123",&getCurrentMap().scrollX)) updateMap();
   ImGui::SameLine();
-  ImGui::InputInt("MapY##MapY123",&getCurrentMap().scrollY);
+  if (ImGui::InputInt("MapY##MapY123",&getCurrentMap().scrollY)) updateMap();
   ImGui::SameLine();
-  ImGui::Text("  Map size: %d x %d",getCurrentMap().width,getCurrentMap().height);
+  ImGui::Text("  Map[%d,%d] Pos[%d,%d]",getCurrentMap().width,getCurrentMap().height,getCurrentMap().lastMouseX,getCurrentMap().lastMouseY);
   ImGui::PopItemWidth();
 
   ImVec2 wp = ImGui::GetWindowPos();
   ImVec2 ws = ImGui::GetWindowSize();
   ImVec2 cp = ImGui::GetCursorScreenPos();
   ImVec2 siz = ImVec2(MAPTILESINX*MAPTILEWIDTH*getCurrentSpriteCanvas().aspect*zoom,MAPTILESINY*MAPTILEHEIGHT*zoom);
+
   ImGui::Image((ImTextureID)((intptr_t)getCurrentMap().texture()),siz);
  
   int mouseCellX = (int)floor((mouseX - cp.x)*MAPTILESINX/siz.x);
@@ -296,6 +304,9 @@ void displayMapWindow() {
 
   int msx = mouseCellX;
   int msy = mouseCellY;
+  getCurrentMap().mouseX = getCurrentMap().scrollX + msx;
+  getCurrentMap().mouseY = getCurrentMap().scrollY + msy;
+
   ImVec2 cp1 = ImVec2(cp.x+msx*siz.x/MAPTILESINX,cp.y+msy*siz.y/MAPTILESINY);
   ImVec2 cp2 = ImVec2(cp.x+(msx+1)*siz.x/MAPTILESINX,cp.y+(msy+1)*siz.y/MAPTILESINY);
   if (msx >= 0 && msy >= 0 && cp1.x < wp.x+ws.x && cp1.y < wp.y+ws.y && ImGui::IsMouseHoveringWindow()) {
@@ -308,8 +319,6 @@ void displayMapWindow() {
     if (mouseButtons & 1) {
       getCurrentMap().selectedX = getCurrentMap().scrollX + msx;
       getCurrentMap().selectedY = getCurrentMap().scrollY + msy;
-      getCurrentMap().mouseX = getCurrentMap().selectedX;
-      getCurrentMap().mouseY = getCurrentMap().selectedY;
 
       if (getCurrentMapTools().currentTool == MAPTOOL_PENCIL) {
         int sx = getCurrentMap().lastMouseX;
@@ -356,16 +365,17 @@ void displaySpriteSelectWindow() {
   ImGui::InputFloat("Zoom##Zoom123",&zoom,0.25);
   zoom = clamp(zoom,0.25f,16.0f);
   ImGui::InputInt("Scroll##FirstTile123",&getCurrentTileSelect().first);
+  getCurrentTileSelect().first=clamp(getCurrentTileSelect().first,-1,(int)sprites.size()-1);
   ImGui::PopItemWidth();
 
   ImVec2 wp = ImGui::GetWindowPos();
   ImVec2 ws = ImGui::GetWindowSize();
   ImVec2 ts = ImVec2(16*getCurrentSpriteCanvas().aspect*zoom,16*zoom);
   int currentSprite = getCurrentTileSelect().first;
-  currentSprite=clamp(currentSprite,0,(int)sprites.size()-1);
+  currentSprite=clamp(currentSprite,-1,(int)sprites.size()-1);
 
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2,2));
-  while(currentSprite<sprites.size()) {
+  while(currentSprite<(int)sprites.size()) {
     for (int x = 0; x < 32; x++) {
       if (x != 0) ImGui::SameLine();
       ImVec2 cp = ImGui::GetCursorScreenPos();
@@ -378,28 +388,41 @@ void displaySpriteSelectWindow() {
       }
       if (cp.y > ws.y+wp.y) {
         ImGui::Text(""); // sameLine
-        currentSprite=sprites.size();
+        currentSprite=(int)sprites.size();
         break;
       }
-      if (currentSprite>=sprites.size()) break;
-      ImVec2 maxTex = ImVec2((float)sprites[currentSprite].width/MAXSPRITEWIDTH,(float)sprites[currentSprite].height/MAXSPRITEHEIGHT);
-      ImGui::Image((ImTextureID)((intptr_t)sprites[currentSprite].texture()),ts,ImVec2(0,0),maxTex);
+      if (currentSprite>=(int)sprites.size()) break;
+
+      if (currentSprite>=0) {
+        ImVec2 maxTex = ImVec2((float)sprites[currentSprite].width/MAXSPRITEWIDTH,(float)sprites[currentSprite].height/MAXSPRITEHEIGHT);
+        ImGui::Image((ImTextureID)((intptr_t)sprites[currentSprite].texture()),ts,ImVec2(0,0),maxTex);
+      } else {
+        ImGui::Image((ImTextureID)0,ts);
+        ImDrawList *l = ImGui::GetWindowDrawList();
+        l->AddRect(cp,cp2,0xffff00ff);
+      }
       
       if (ImGui::IsMouseHoveringRect(cp,cp2) && (mouseButtons & 1)) {
         getCurrentTileSelect().spriteNr = currentSprite;
+      }
+
+      if (currentSprite==(int)sprites.size()-1) {
+        ImDrawList *l = ImGui::GetWindowDrawList();
+        l->AddLine(ImVec2(cp2.x,cp.y),cp2,0xffffffff);
+        l->AddLine(ImVec2(cp.x,cp2.y),cp2,0xffffffff);
       }
 
       if (currentSprite==getCurrentTileSelect().spriteNr) {
         ImDrawList *l = ImGui::GetWindowDrawList();
         l->AddRect(cp,cp2,0xff0000ff);
       }
+
       currentSprite++;
     }
   }
   ImGui::PopStyleVar();
 
   ImGui::End();
-
 }
 
 void mapButtonActive(int toolType) {
@@ -418,17 +441,19 @@ void displayMapToolsWindow() {
   ImGui::Begin("Map Tools##MapTools123",NULL,ImVec2(_WIDTH(140),_HEIGHT(300)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
   ImGui::PushItemWidth(64);
   int currentSprite = getCurrentTileSelect().spriteNr;
-  currentSprite=clamp(currentSprite,0,(int)sprites.size()-1);
-  ImVec2 maxTex = ImVec2((float)sprites[currentSprite].width/MAXSPRITEWIDTH,(float)sprites[currentSprite].height/MAXSPRITEHEIGHT);
-
-  ImVec2 ts = ImVec2(_HEIGHT(40)*getCurrentSpriteCanvas().aspect,_HEIGHT(40));
-  ImGui::Image((ImTextureID)((intptr_t)sprites[currentSprite].texture()),ts,ImVec2(0,0),maxTex);
-  ImGui::SameLine();
-  ImGui::BeginChild("Child##Child12345",ImVec2(100,ts.y));
-  ImGui::InputText("Name##Name12345",sprites[currentSprite].name,8);
-  ImGui::Text("#%04x",sprites[currentSprite].getId());
-  ImGui::EndChild();
-
+  if (currentSprite>=0&&currentSprite<(int)sprites.size()) {
+    ImVec2 maxTex = ImVec2((float)sprites[currentSprite].width/MAXSPRITEWIDTH,(float)sprites[currentSprite].height/MAXSPRITEHEIGHT);
+    ImVec2 ts = ImVec2(_HEIGHT(40)*getCurrentSpriteCanvas().aspect,_HEIGHT(40));
+    ImGui::Image((ImTextureID)((intptr_t)sprites[currentSprite].texture()),ts,ImVec2(0,0),maxTex);
+    ImGui::SameLine();
+    ImGui::BeginChild("Child##Child12345",ImVec2(100,ts.y+10));
+    ImGui::InputText("Name##Name12345",sprites[currentSprite].name,8);
+    ImGui::Text("#%04x",sprites[currentSprite].getId());
+    ImGui::Text("Sprite:%d",currentSprite);
+    ImGui::EndChild();
+  } else {
+    ImGui::Text("Sprite:Eraser");
+  }
   mapButtonActive(TOOL_PENCIL); if (ImGui::Button("Pencil")) getCurrentMapTools().currentTool = MAPTOOL_PENCIL; mapButtonActiveEnd();
   ImGui::Text("Under Construction");
 
@@ -544,6 +569,7 @@ void displayMapModal() {
   case MAPMODAL_CANVAS: mapModal_Canvas(); break;
   }
   mapModal = MAPMODAL_NONE;
+  updateMap();
 }
 
 void display_mapPainter() {

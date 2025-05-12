@@ -9,6 +9,7 @@
 #include <i86.h>
 #include "array.hpp"
 #include "hashmap.hpp"
+#include "hashmap.hpp"
 #include "imguigl.hpp"
 #define ImTextureID void *
 #define spArray Array
@@ -457,6 +458,7 @@ public:
     if (mark) {
       glDeleteTextures(1,&textureId);
       textureId = 0;
+      mark=false;
     }
     if (textureId == 0) {
       bool doublePixel = getCurrentSpriteCanvas().doublePixel;
@@ -471,7 +473,7 @@ public:
       glBindTexture(GL_TEXTURE_2D, textureId);
       bool bg = getCurrentSpriteCanvas().background;
       bool alpha = getCurrentSpriteCanvas().showAlpha;
-       for (int i = 0; i < MAXSPRITEWIDTH*MAXSPRITEHEIGHT; i++) {
+      for (int i = 0; i < MAXSPRITEWIDTH*MAXSPRITEHEIGHT; i++) {
         int r1 = (bitmap[i]>>0) & 255;
         int g1 = (bitmap[i]>>8) & 255;
         int b1 = (bitmap[i]>>16) & 255;
@@ -486,7 +488,7 @@ public:
         int a = ((a2 - a1)*a2)/255+a1;
         temp[i] = r|(g<<8)|(b<<16)|(a<<24);
         if (bg && ((temp[i]>>24)<2)) {
-          temp[i] = ((((i+i/MAXSPRITEWIDTH) % 3)+1)*0x00202020)|0xff000000;
+          temp[i] = (((((i%MAXSPRITEWIDTH)+i/MAXSPRITEWIDTH) % 3)+1)*0x00202020)|0xff000000;
         }
         if (alpha) {
           temp[i] = a|(a<<8)|(a<<16)|0xff000000;
@@ -528,6 +530,7 @@ public:
     if (mark) {
       glDeleteTextures(1,&textureId);
       textureId = 0;
+      mark = false;
     }
     if (textureId == 0) {
       glGenTextures(1, &textureId);
@@ -647,7 +650,7 @@ public:
     width = 2;
     height = 2;
     spriteIndices.resize(width*height);
-    for (int i = 0; i < spriteIndices.size(); i++) spriteIndices[i] = 0;
+    for (int i = 0; i < (int)spriteIndices.size(); i++) spriteIndices[i] = 0;
   }
 };
 
@@ -676,7 +679,7 @@ uint16_t getUniqueId() {
     if (uniqueId==0) 
       continue;
     found=false;
-    for (int i = 0; i < sprites.size(); i++) {
+    for (int i = 0; i < (int)sprites.size(); i++) {
       if (sprites[i].getId() == uniqueId) {
         found = true;
         break;
@@ -702,7 +705,7 @@ void undo() {
   tool = tool_undo;
   animation = animation_undo;
   testBox = testBox_undo;
-  for (int i = 0; i < sprites.size(); i++) sprites[i].update();
+  for (int i = 0; i < (int)sprites.size(); i++) sprites[i].update();
   palette.update();
 }
 
@@ -780,7 +783,7 @@ T sign(const T &v) {
 }
 
 void updateAll() {
-  for (int i = 0; i < sprites.size(); i++) {sprites[i].update();sprites[i].texture();}
+  for (int i = 0; i < (int)sprites.size(); i++) {sprites[i].update();sprites[i].texture();}
   getCurrentPalette().update();
 }
 
@@ -1056,7 +1059,7 @@ unsigned int quantize(unsigned int c) {
 }
 
 void quantizeAll() {
-  for (int i = 0; i < sprites.size(); i++) {
+  for (int i = 0; i < (int)sprites.size(); i++) {
     for (int y = 0; y < MAXSPRITEHEIGHT; y++) {
       for (int x = 0; x < MAXSPRITEWIDTH; x++) {
         unsigned int c = sprites[i].bitmap[x+y*MAXSPRITEWIDTH];
@@ -1270,9 +1273,9 @@ void displayMenuBar() {
         ImGui::EndMenu();
       }
 #ifndef NOT_DOS
-      ImGui::Text("\t\t\t%02d|%02d %d|%d %s  FPS/%d",coordX,coordY,getCurrentSpriteCanvas().spriteNr,sprites.size(),currentTimeString().c_str(),(int)fps);
+      ImGui::Text("\t\t\t%02d|%02d %d|%d %s  FPS/%d",coordX,coordY,getCurrentSpriteCanvas().spriteNr,(int)sprites.size(),currentTimeString().c_str(),(int)fps);
 #else
-      ImGui::Text("\t\t\t%02d|%02d %d|%d", coordX, coordY,getCurrentSpriteCanvas().spriteNr, sprites.size());
+      ImGui::Text("\t\t\t%02d|%02d %d|%d", coordX, coordY,getCurrentSpriteCanvas().spriteNr, (int)sprites.size());
 #endif
 
       ImGui::EndMainMenuBar();
@@ -2741,7 +2744,7 @@ void exportSprites(const char *fileName) {
 
   int currentWidth = 0;
   int currentHeight = 0;
-  {for(int i = 0; i < sprites.size(); i++) {
+  {for(int i = 0; i < (int)sprites.size(); i++) {
     currentWidth += sprites[i].width;
     if (currentWidth > 1024) {currentWidth = 1024; break;}
   }}
@@ -2750,7 +2753,7 @@ void exportSprites(const char *fileName) {
   int currentY = 0;
   int lastMaxHeight = 0;
   int lastLineY = 0;
-  {for(int i = 0; i < sprites.size(); i++) {
+  {for(int i = 0; i < (int)sprites.size(); i++) {
     currentX += sprites[i].width;
     if (sprites[i].height>lastMaxHeight) lastMaxHeight = sprites[i].height;
     if (currentX > 1024) {
@@ -2768,7 +2771,7 @@ void exportSprites(const char *fileName) {
   currentX = 0;
   currentY = 0;
   lastMaxHeight = 0;
-  {for(int i = 0; i < sprites.size(); i++) {
+  {for(int i = 0; i < (int)sprites.size(); i++) {
     int paintCurrentX = currentX;
     currentX += sprites[i].width;
     if (sprites[i].height>lastMaxHeight) lastMaxHeight = sprites[i].height;
@@ -2804,7 +2807,7 @@ bool importSpritesCounter(const char *fileName) {
       break;
   }
   if (firstCounterPos == -1) {someError = true; return false;}
-  if (firstCounterPos < name.size()-4) {someError = true; return false;}
+  if (firstCounterPos < (int)name.size()-4) {someError = true; return false;}
   int a = atoi(&name[firstCounterPos]);
   static int destSprite = 0;
   int firstSprite = a;
@@ -2851,7 +2854,7 @@ bool importSpritesCounter(const char *fileName) {
         ins.push_back(spr);
       }
       if (!someError) {
-        if (destSprite<sprites.size()) {
+        if (destSprite<(int)sprites.size()) {
           for (int i = lastSprite-firstSprite; i>= 0; i--) {
               sprites.spInsert(sprites,ins[i],destSprite);
               sprites[destSprite].update();
@@ -2878,9 +2881,9 @@ bool importSpritesCounter(const char *fileName) {
 bool exportSpritesCounter(const char *fileName) {
   String path = getPath(String(fileName));
   String name = getName(String(fileName));
-  if (name.size()>4) name.resize(4);
+  if ((int)name.size()>4) name.resize(4);
   RGBAImage img;
-  for(int i = 0; i < sprites.size(); i++) {
+  for(int i = 0; i < (int)sprites.size(); i++) {
     img.width = sprites[i].width;
     img.height = sprites[i].height;
     img.data = new unsigned int[img.width*img.height];
@@ -3023,7 +3026,7 @@ bool importPSDLayers(const char *fileName) {
         }
         ins.push_back(k);
       }
-      if (destSprite<sprites.size()) {
+      if (destSprite<(int)sprites.size()) {
         for (int i = layerN-layer0; i>= 0; i--) {
             sprites.spInsert(sprites,ins[i],destSprite);
             sprites[destSprite].update();
@@ -3143,7 +3146,7 @@ bool importAnimatedGif(const char *fileName) {
         }
         ins.push_back(k);
       }
-      if (destSprite<sprites.size()) {
+      if (destSprite<(int)sprites.size()) {
         for (int i = layerN-layer0; i>= 0; i--) {
             sprites.spInsert(sprites,ins[i],destSprite);
             sprites[destSprite].update();
@@ -3389,7 +3392,7 @@ void displayToolWindow() {
     }
     ImGui::SameLine();
     if (ImGui::Button("On all sprites")) {
-      for (int i = 0; i < sprites.size(); i++) {
+      for (int i = 0; i < (int)sprites.size(); i++) {
         Sprite &a = sprites[i];
         for (int y = 0; y < a.height; y++) {
           for (int x = 0; x < a.width; x++) { 
@@ -3473,7 +3476,7 @@ void displaySpriteSheet() {
   ImGui::Checkbox("x2",&getCurrentSpriteSheet().halveSize);
   if (!sprites.empty()) {
     if (ImGui::Button("Erase")) {
-      if (sprites.size()>1) {
+      if ((int)sprites.size()>1) {
         sprites.spErase(sprites,getCurrentSpriteCanvas().spriteNr,1);
       }
     }
@@ -3492,7 +3495,7 @@ void displaySpriteSheet() {
   k0.x += 93;
 
   bool doubleLinePainted=false;
-  for (int i = getCurrentSpriteSheet().xScroll; i < sprites.size(); i++) {
+  for (int i = getCurrentSpriteSheet().xScroll; i < (int)sprites.size(); i++) {
     int wh=52;
     if (getCurrentSpriteSheet().halveSize) wh/=2;
     ImGui::SameLine();
@@ -3837,7 +3840,7 @@ void displayCopySprites() {
     }             
     ImGui::SameLine();
     if (ImGui::Button("Proceed##Proceed33")) {
-      if (spriteNr==sprites.size()) {
+      if (spriteNr==(int)sprites.size()) {
         for(int i = copyStartSprite; i <= copyEndSprite; i++) {
           sprites[i].update();
           sprites.push_back(sprites[i]);

@@ -45,7 +45,7 @@ public:
   const bool operator!=(const String &b) const {
     return !(*this == b);
   }
-  
+
   const bool operator<(const String &b) const {
     int64_t l = length();
     if (b.length()<l) l = b.length();

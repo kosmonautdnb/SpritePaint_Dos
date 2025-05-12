@@ -378,6 +378,13 @@ enum {
 
 int loadSave = LoadSave_None;
 
+enum {
+  SUBSET_SPRITEPAINTER = 0,
+  SUBSET_MAPPAINTER = 1,
+};
+
+int activeSubset = SUBSET_SPRITEPAINTER;
+
 unsigned int temp[MAXSPRITEHEIGHT*MAXSPRITEWIDTH];
 unsigned int clipBoard[MAXSPRITEHEIGHT*MAXSPRITEWIDTH];
 int clipBoardW=0;
@@ -410,6 +417,10 @@ public:
 
 SpriteCanvas &getCurrentSpriteCanvas();
 
+uint16_t getUniqueId();
+
+void updateMap();
+
 class Sprite {
 public:
   int width,height;
@@ -426,7 +437,8 @@ public:
     memset(&bitmap[0],0x00,MAXSPRITEWIDTH*MAXSPRITEHEIGHT*sizeof(unsigned int));
     width = 64;
     height = 64;
-    sprintf(name,"Not named");
+    sprintf(name,"No name");
+    getId() = getUniqueId();
     textureId = 0;
     mark = false;
     mirrorPaintX=false;
@@ -434,8 +446,10 @@ public:
     mirrorXPos = 32;
     mirrorYPos = 32;
   }
+  uint16_t &getId() {return *((uint16_t*)&name[8]);}
   void update() {
     mark = true;
+    updateMap();
   }
   GLuint texture() {
     if (mark) {
@@ -649,6 +663,26 @@ Palette palette_undo;
 Tool tool_undo;
 Animation animation_undo;
 TestBox testBox_undo;
+
+uint16_t getUniqueId() {
+  uint16_t uniqueId=0;
+  bool found = false;
+  do {
+    int a = ((int)glSeconds())&0xffff;
+    int b = (rand()+rand()*256)&0xffff;
+    uniqueId = (a+b)&0xffff;
+    if (uniqueId==0) 
+      continue;
+    found=false;
+    for (int i = 0; i < sprites.size(); i++) {
+      if (sprites[i].getId() == uniqueId) {
+        found = true;
+        break;
+      }
+    }
+  } while(found);
+  return uniqueId;
+}
 
 void makeUndoPoint() {
   sprites_undo = sprites;
@@ -1192,6 +1226,7 @@ void displayMenuBar() {
       if (ImGui::BeginMenu("Sprites")) {
         if (ImGui::MenuItem("Import sprite atlas [png]")) loadSave = LoadSave_ImportSpriteAtlas;
         if (ImGui::MenuItem("Export sprite sheet [png]")) loadSave = LoadSave_ExportSprites;
+        ImGui::Separator();
         if (ImGui::MenuItem("Import from animated [gif]")) loadSave = LoadSave_ImportAnimatedGif;
         ImGui::Separator();
         if (ImGui::MenuItem("Import sprites [pngs/counter]")) loadSave = LoadSave_ImportSpritesCounter;
@@ -1224,14 +1259,18 @@ void displayMenuBar() {
         if (ImGui::MenuItem("Copy sprites")) {modalMode=MODAL_COPYSPRITES; mouseDelay=MOUSEDELAY;}
         ImGui::EndMenu();
       }
+      if (ImGui::BeginMenu("Tools")) {
+        if (ImGui::MenuItem("Map painter (under construction)")) {activeSubset = SUBSET_MAPPAINTER;}
+        ImGui::EndMenu();
+      }
       if (ImGui::BeginMenu("Info")) {
         if (ImGui::MenuItem("About")) {showAbout = true; mouseDelay=MOUSEDELAY;}
         ImGui::EndMenu();
       }
 #ifndef NOT_DOS
-      ImGui::Text("\t\t\t\t\t%02d|%02d %d|%d %s  FPS/%d",coordX,coordY,getCurrentSpriteCanvas().spriteNr,sprites.size(),currentTimeString().c_str(),(int)fps);
+      ImGui::Text("\t\t\t%02d|%02d %d|%d %s  FPS/%d",coordX,coordY,getCurrentSpriteCanvas().spriteNr,sprites.size(),currentTimeString().c_str(),(int)fps);
 #else
-      ImGui::Text("\t\t\t\t\t%02d|%02d %d|%d", coordX, coordY,getCurrentSpriteCanvas().spriteNr, sprites.size());
+      ImGui::Text("\t\t\t%02d|%02d %d|%d", coordX, coordY,getCurrentSpriteCanvas().spriteNr, sprites.size());
 #endif
 
       ImGui::EndMainMenuBar();
@@ -2236,7 +2275,11 @@ void displaySpriteEditField() {
   getCurrentSprite().height = clamp(getCurrentSprite().height,MINSPRITEHEIGHT,MAXSPRITEHEIGHT);
   ImGui::InputFloat("Zoom",&getCurrentSpriteCanvas().zoom,1.0);
   ImGui::SameLine();
-  ImGui::InputText("Name", getCurrentSprite().name,10);
+  ImGui::PushItemWidth(52);
+  ImGui::InputText("##Name123", getCurrentSprite().name,8);
+  ImGui::PopItemWidth();
+  ImGui::SameLine();
+  ImGui::Text("#%04x",getCurrentSprite().getId());
   ImGui::SameLine();
   ImGui::Checkbox("Grid",&getCurrentSpriteCanvas().gridOn);
   ImGui::SameLine();
@@ -3873,6 +3916,8 @@ void displayAbout() {
   showAbout = false;
 }
 
+#include "_map.cpp" // :cpp include:
+
 int main(int argc, char **argv) {
   if (!initGraphics()) {
     printf("No Vesa Mode %dx%d with 32Bit found.\n",XRES,YRES);
@@ -3906,14 +3951,20 @@ int main(int argc, char **argv) {
     }
     lastFrameSecond = second;
 
-    displayMenuBar();
-    displaySpriteEditField();
-    displayToolWindow();
-    displayColorPicker();
-    displayColorWheel();
-    displayAnimation();
-    displayTestBox();
-    displaySpriteSheet();
+    if (activeSubset == SUBSET_SPRITEPAINTER) {
+      displayMenuBar();
+      displaySpriteEditField();
+      displayToolWindow();
+      displayColorPicker();
+      displayColorWheel();
+      displayAnimation();
+      displayTestBox();
+      displaySpriteSheet();
+    } else
+    if (activeSubset == SUBSET_MAPPAINTER) {
+      display_mapPainter();
+    }
+
     if (showAbout)
       displayAbout();
     displayLoadSave();
@@ -3930,6 +3981,8 @@ int main(int argc, char **argv) {
 
     refreshGraphics();
   } while(!quit);
+  
+  saveSpriteSheet("-backup-.ss");
 
   closeGraphics();
 

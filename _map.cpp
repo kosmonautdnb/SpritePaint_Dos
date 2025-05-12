@@ -1,0 +1,476 @@
+// -----
+// _sprite.exe (c)2025 by Stefan Mader (MIT-License)
+// -----
+
+#define MAXMAPWIDTH 4096
+#define MAXMAPHEIGHT 4096
+
+#define MAPTILESINX 32
+#define MAPTILESINY 32
+#define MAPTILEWIDTH ((int)(_HEIGHT(32)))
+#define MAPTILEHEIGHT ((int)(_HEIGHT(32)))
+
+enum {
+  MAPMODAL_NONE = 0,
+  MAPMODAL_CANVAS = 1,
+};
+
+int mapModal = MAPMODAL_NONE;
+
+class MapTile {
+public:
+  spArray<uint16_t> tileIds;
+  MapTile() {
+  }
+  void clear() {
+    tileIds.clear();
+  }
+};
+
+enum {
+  MAPTOOL_PENCIL = 1,
+};
+
+class MapTools {
+public:
+  int currentTool;
+  MapTools() {
+    currentTool = MAPTOOL_PENCIL;
+  }
+};
+
+MapTools mapTools;
+
+MapTools &getCurrentMapTools() {
+  return mapTools;
+}
+
+class Map {
+public:
+  GLuint textureId;
+  int scrollX,scrollY;
+  int selectedX, selectedY;
+  int width,height;
+  bool mark;
+  spArray<MapTile> tiles;
+
+  Map() {
+    textureId = 0;
+    selectedX = 0;
+    selectedY = 0;
+    scrollX = 0;
+    scrollY = 0;
+    width = 32;
+    height = 32;
+    tiles.resize(width*height);
+    mark = false;
+  }
+
+  void update() {
+    mark = true;
+  }
+
+  GLuint texture() {
+    if (mark) {
+      glDeleteTextures(1,&textureId);
+      textureId = 0;
+    }
+    if (textureId == 0) {
+      spHashMap<int,int> idToSpriteNr;
+      for (int i = 0; i < sprites.size(); i++) {
+        idToSpriteNr[sprites[i].getId()]=i;
+      }
+      unsigned int *temp = new unsigned int[MAPTILESINX*MAPTILEWIDTH*MAPTILESINY*MAPTILEHEIGHT];
+      memset(temp,0,MAPTILESINX*MAPTILEWIDTH*MAPTILESINY*MAPTILEHEIGHT*4);
+      for (int tx = 0; tx < MAPTILESINX; tx++) {
+        for (int ty = 0; ty < MAPTILESINX; ty++) {
+          int tx2 = tx + scrollX;
+          int ty2 = ty + scrollY;
+          if (tx2<0||ty2<0||tx2>=width||ty2>=height) {
+            for (int my = 0; my < MAPTILEHEIGHT; my++) {
+              for (int mx = 0; mx < MAPTILEWIDTH; mx++) {
+                int x2 = tx*MAPTILEWIDTH+mx;
+                int y2 = ty*MAPTILEHEIGHT+my;
+                unsigned int &t = temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)];
+                t = 0x80101010-(((tx+scrollX)^(ty+scrollY))&3)*0x00020202;
+              }
+            }
+            continue;
+          }
+          const MapTile &t = tiles[tx2+ty2*width];
+          if (t.tileIds.empty()) {
+            for (int my = 0; my < MAPTILEHEIGHT; my++) {
+              for (int mx = 0; mx < MAPTILEWIDTH; mx++) {
+                int x2 = tx*MAPTILEWIDTH+mx;
+                int y2 = ty*MAPTILEHEIGHT+my;
+                unsigned int &t = temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)];
+                t = 0x80803060-(((tx+scrollX)^(ty+scrollY))&3)*0x00201020;
+              }
+            }
+            continue;
+          }
+          int tileId = t.tileIds[0];
+          if (!(idToSpriteNr.spHas(idToSpriteNr,tileId))) {
+            for (int my = 0; my < MAPTILEHEIGHT; my++) {
+              for (int mx = 0; mx < MAPTILEWIDTH; mx++) {
+                int x2 = tx*MAPTILEWIDTH+mx;
+                int y2 = ty*MAPTILEHEIGHT+my;
+                unsigned int &t = temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)];
+                t = 0xffff00ff;
+              }
+            }
+            continue;
+          }
+          int spriteNr = idToSpriteNr[tileId];
+          spriteNr = clamp(spriteNr,0,(int)sprites.size()-1);
+          Sprite &s = sprites[spriteNr];
+          for (int my = 0; my < MAPTILEHEIGHT; my++) {
+            for (int mx = 0; mx < MAPTILEWIDTH; mx++) {
+              int x3 = mx * s.width / MAPTILEWIDTH;
+              int y3 = my * s.height / MAPTILEHEIGHT;
+              int x2 = tx*MAPTILEWIDTH+mx;
+              int y2 = ty*MAPTILEHEIGHT+my;
+              unsigned int &t = temp[x2+y2*(MAPTILESINX*MAPTILEWIDTH)];
+              t = s.bitmap[x3+y3*MAXSPRITEWIDTH];
+            }
+          }
+        }
+      }
+      glGenTextures(1, &textureId);
+      glBindTexture(GL_TEXTURE_2D, textureId);
+      glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,MAPTILESINX*MAPTILEWIDTH,MAPTILESINY*MAPTILEHEIGHT,0,GL_RGBA,GL_UNSIGNED_BYTE,temp);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+      delete[] temp;
+    }
+    return textureId;
+  }
+};
+
+class TileSelect {
+public:
+  int first;
+  int spriteNr;
+  TileSelect() {
+    first = 0;
+    spriteNr = 0;
+  }
+};
+
+Map map;
+TileSelect tileSelect;
+
+Map &getCurrentMap() {
+  return map;
+}
+
+TileSelect &getCurrentTileSelect() {
+  return tileSelect;
+}
+
+void updateMap() {
+  getCurrentMap().update();
+}
+
+void displayMenuBar_mapPainter() {
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(10,1));
+    ImGui::PushStyleColor(ImGuiCol_MenuBarBg,ImVec4(0xff/255.f,0xff/255.f,0xff/255.f,0xff/255.f));
+    ImGui::PushStyleColor(ImGuiCol_Text,ImVec4(0x20/255.f,0x20/255.f,0x20/255.f,0xff/255.f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(0xff/255.f,0xff/255.f,0xff/255.f,0xff/255.f));
+    if (ImGui::BeginMainMenuBar()) {
+      if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("Exit map painter")) {
+          activeSubset = SUBSET_SPRITEPAINTER;
+        }
+        ImGui::EndMenu();
+      }
+      if (ImGui::BeginMenu("Map")) {
+        if (ImGui::MenuItem("Canvas")) {
+          mapModal = MAPMODAL_CANVAS;
+        }
+        ImGui::EndMenu();
+      }
+      if (ImGui::BeginMenu("Info")) {
+        if (ImGui::MenuItem("About")) {showAbout = true; mouseDelay=MOUSEDELAY;}
+        ImGui::EndMenu();
+      }
+#ifndef NOT_DOS
+      ImGui::Text("\t\t\t\t\t\t%s  FPS/%d",currentTimeString().c_str(),(int)fps);
+#else
+      ImGui::Text("\t\t\t\t\t\t");
+#endif
+      ImGui::EndMainMenuBar();
+    }
+    ImGui::PopStyleColor();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleColor();
+    ImGui::PopStyleVar();
+}
+
+void paintAtSelected() {
+  int x = getCurrentMap().selectedX;
+  int y = getCurrentMap().selectedY;
+  int w = getCurrentMap().width;
+  int h = getCurrentMap().height;
+
+  if (x>=0&&x<w&&y>=0&&x<h) {
+    int adr = x + y * w;
+    if (getCurrentMap().tiles[adr].tileIds.empty()) getCurrentMap().tiles[adr].tileIds.push_back(0);
+    int spr = getCurrentTileSelect().spriteNr;
+    spr = clamp(spr,0,(int)sprites.size()-1);
+    int tileId =  sprites[spr].getId();
+    getCurrentMap().tiles[adr].tileIds[0] = tileId;
+  }
+}
+
+void getAtSelected() {
+  int x = getCurrentMap().selectedX;
+  int y = getCurrentMap().selectedY;
+  int w = getCurrentMap().width;
+  int h = getCurrentMap().height;
+
+  if (x>=0&&x<w&&y>=0&&x<h) {
+    int adr = x + y * w;
+    if (getCurrentMap().tiles[adr].tileIds.empty()) return;
+    for (int i = 0; i < sprites.size(); i++) {
+      if (sprites[i].getId()==getCurrentMap().tiles[adr].tileIds[0]) {
+        getCurrentTileSelect().spriteNr = i;
+        return;
+      }
+    }
+  }
+}
+
+void displayMapWindow() {
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(20))); isInit = false;
+  ImGui::Begin("Map##Map123",NULL,ImVec2(_WIDTH(500),_HEIGHT(460)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+
+  ImGui::PushItemWidth(64);
+  static float zoom = 1.0;
+  ImGui::InputFloat("Zoom##Zoom123",&zoom,0.25);
+  zoom = clamp(zoom,0.75f,16.0f);
+  ImGui::SameLine();
+  ImGui::InputInt("MapX##MapX123",&getCurrentMap().scrollX);
+  ImGui::SameLine();
+  ImGui::InputInt("MapY##MapY123",&getCurrentMap().scrollY);
+  ImGui::SameLine();
+  ImGui::Text("  Map size: %d x %d",getCurrentMap().width,getCurrentMap().height);
+  ImGui::PopItemWidth();
+
+  ImVec2 wp = ImGui::GetWindowPos();
+  ImVec2 ws = ImGui::GetWindowSize();
+  ImVec2 cp = ImGui::GetCursorScreenPos();
+  ImVec2 siz = ImVec2(MAPTILESINX*MAPTILEWIDTH*getCurrentSpriteCanvas().aspect*zoom,MAPTILESINY*MAPTILEHEIGHT*zoom);
+  ImGui::Image((ImTextureID)((intptr_t)getCurrentMap().texture()),siz);
+ 
+  int mouseCellX = (int)floor((mouseX - cp.x)*MAPTILESINX/siz.x);
+  int mouseCellY = (int)floor((mouseY - cp.y)*MAPTILESINY/siz.y);
+
+  int msx = mouseCellX;
+  int msy = mouseCellY;
+  ImVec2 cp1 = ImVec2(cp.x+msx*siz.x/MAPTILESINX,cp.y+msy*siz.y/MAPTILESINY);
+  ImVec2 cp2 = ImVec2(cp.x+(msx+1)*siz.x/MAPTILESINX,cp.y+(msy+1)*siz.y/MAPTILESINY);
+  if (msx >= 0 && msy >= 0 && cp1.x < wp.x+ws.x && cp1.y < wp.y+ws.y && ImGui::IsMouseHoveringWindow()) {
+    ImDrawList *l = ImGui::GetWindowDrawList();
+    l->AddRect(cp1,cp2,0xff0000ff);
+    cp1.x++;cp1.y++;cp2.x--;cp2.y--;
+    l->AddRect(cp1,cp2,0xff000000);
+    cp1.x--;cp1.y--;cp2.x++;cp2.y++;
+
+    if (mouseButtons & 1) {
+      getCurrentMap().selectedX = getCurrentMap().scrollX + msx;
+      getCurrentMap().selectedY = getCurrentMap().scrollY + msy;
+      if (getCurrentMapTools().currentTool == MAPTOOL_PENCIL) {
+        paintAtSelected();
+      }
+    }
+    if (mouseButtons & 2) {
+      getCurrentMap().selectedX = getCurrentMap().scrollX + msx;
+      getCurrentMap().selectedY = getCurrentMap().scrollY + msy;
+      getAtSelected();
+    }
+  }
+  {
+    int ssx = getCurrentMap().selectedX-getCurrentMap().scrollX;
+    int ssy = getCurrentMap().selectedY-getCurrentMap().scrollY;
+    ImVec2 cp1 = ImVec2(cp.x+ssx*siz.x/MAPTILESINX,cp.y+ssy*siz.y/MAPTILESINY);
+    ImVec2 cp2 = ImVec2(cp.x+(ssx+1)*siz.x/MAPTILESINX,cp.y+(ssy+1)*siz.y/MAPTILESINY);
+    if (ssx >= 0 && ssy >= 0 && cp1.x < wp.x+ws.x && cp1.y < wp.y+ws.y) {
+      ImDrawList *l = ImGui::GetWindowDrawList();
+      l->AddRect(cp1,cp2,0xffffffff);
+      cp1.x++;cp1.y++;cp2.x--;cp2.y--;
+      l->AddRect(cp1,cp2,0xff000000);
+      cp1.x--;cp1.y--;cp2.x++;cp2.y++;
+    }
+  }
+  ImGui::End();
+}
+
+void displaySpriteSelectWindow() {
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(500),_HEIGHT(20))); isInit = false;
+  ImGui::Begin("Tile Select##Tile Select123",NULL,ImVec2(_WIDTH(140),_HEIGHT(160)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+
+  ImGui::PushItemWidth(64);
+  static float zoom = 1.0;
+  ImGui::InputFloat("Zoom##Zoom123",&zoom,0.25);
+  zoom = clamp(zoom,0.25f,16.0f);
+  ImGui::InputInt("Scroll##FirstTile123",&getCurrentTileSelect().first);
+  ImGui::PopItemWidth();
+
+  ImVec2 wp = ImGui::GetWindowPos();
+  ImVec2 ws = ImGui::GetWindowSize();
+  ImVec2 ts = ImVec2(16*getCurrentSpriteCanvas().aspect*zoom,16*zoom);
+  int currentSprite = getCurrentTileSelect().first;
+  currentSprite=clamp(currentSprite,0,(int)sprites.size()-1);
+
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(2,2));
+  while(currentSprite<sprites.size()) {
+    for (int x = 0; x < 32; x++) {
+      if (x != 0) ImGui::SameLine();
+      ImVec2 cp = ImGui::GetCursorScreenPos();
+      ImVec2 cp2 = cp;
+      cp2.x += ts.x;
+      cp2.y += ts.y;
+      if (cp.x > ws.x+wp.x-ts.x) {
+        ImGui::Text(""); // sameLine
+        break;
+      }
+      if (cp.y > ws.y+wp.y) {
+        ImGui::Text(""); // sameLine
+        currentSprite=sprites.size();
+        break;
+      }
+      if (currentSprite>=sprites.size()) break;
+      ImVec2 maxTex = ImVec2((float)sprites[currentSprite].width/MAXSPRITEWIDTH,(float)sprites[currentSprite].height/MAXSPRITEHEIGHT);
+      ImGui::Image((ImTextureID)((intptr_t)sprites[currentSprite].texture()),ts,ImVec2(0,0),maxTex);
+      
+      if (ImGui::IsMouseHoveringRect(cp,cp2) && (mouseButtons & 1)) {
+        getCurrentTileSelect().spriteNr = currentSprite;
+      }
+
+      if (currentSprite==getCurrentTileSelect().spriteNr) {
+        ImDrawList *l = ImGui::GetWindowDrawList();
+        l->AddRect(cp,cp2,0xff0000ff);
+      }
+      currentSprite++;
+    }
+  }
+  ImGui::PopStyleVar();
+
+  ImGui::End();
+
+}
+
+void mapButtonActive(int toolType) {
+  if (getCurrentMapTools().currentTool == toolType)
+    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.5f,0.6f,0.9f,1));
+  else
+    ImGui::PushStyleColor(ImGuiCol_Button,ImVec4(0.2f,0.3f,0.4f,1));
+}
+
+void mapButtonActiveEnd() {
+  ImGui::PopStyleColor();
+}
+
+void displayMapToolsWindow() {
+  static bool isInit = true; if (isInit) ImGui::SetNextWindowPos(ImVec2(_WIDTH(500),_HEIGHT(180))); isInit = false;
+  ImGui::Begin("Map Tools##MapTools123",NULL,ImVec2(_WIDTH(140),_HEIGHT(300)),-1,ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoMove);
+  ImGui::PushItemWidth(64);
+  int currentSprite = getCurrentTileSelect().spriteNr;
+  currentSprite=clamp(currentSprite,0,(int)sprites.size()-1);
+  ImVec2 maxTex = ImVec2((float)sprites[currentSprite].width/MAXSPRITEWIDTH,(float)sprites[currentSprite].height/MAXSPRITEHEIGHT);
+
+  ImVec2 ts = ImVec2(_HEIGHT(40)*getCurrentSpriteCanvas().aspect,_HEIGHT(40));
+  ImGui::Image((ImTextureID)((intptr_t)sprites[currentSprite].texture()),ts,ImVec2(0,0),maxTex);
+  ImGui::SameLine();
+  ImGui::BeginChild("Child##Child12345",ImVec2(100,ts.y));
+  ImGui::InputText("Name##Name12345",sprites[currentSprite].name,8);
+  ImGui::Text("#%04x",sprites[currentSprite].getId());
+  ImGui::EndChild();
+
+  mapButtonActive(TOOL_PENCIL); if (ImGui::Button("Pencil")) getCurrentMapTools().currentTool = MAPTOOL_PENCIL; mapButtonActiveEnd();
+  ImGui::Text("Under Construction");
+
+
+  ImGui::PopItemWidth();
+  ImGui::End();
+}
+
+spArray<MapTile> oldArray;
+
+void mapModalCanvas() {
+  bool finished = false;
+  bool first = true;
+  int borderLeft = 0;
+  int borderTop = 0;
+  int borderRight = getCurrentMap().width;
+  int borderBottom = getCurrentMap().height;
+  do
+  {
+    ImGuiNewFrame();
+    if (first) ImGui::SetNextWindowPos(ImVec2(_WIDTH(0),_HEIGHT(0)));
+    first = false;
+    ImGui::Begin("Change Canvas Borders##NewSizeX11");
+    ImGui::PushItemWidth(64);
+    ImGui::InputInt("Left position", &borderLeft);
+    ImGui::InputInt("Top position", &borderTop);
+    ImGui::InputInt("Right position", &borderRight);
+    ImGui::InputInt("Bottom position", &borderBottom);
+    borderLeft = clamp(borderLeft,-MAXMAPWIDTH,MAXMAPWIDTH);
+    borderRight = clamp(borderRight,borderLeft+1,MAXMAPWIDTH);
+    borderTop = clamp(borderTop,-MAXMAPHEIGHT,MAXMAPHEIGHT);
+    borderBottom = clamp(borderBottom,borderTop+1,MAXMAPHEIGHT);
+    ImGui::PopItemWidth();
+    if (ImGui::Button("Cancel##Cancel11")||ImGui::IsKeyDown(ImGui::GetIO().KeyMap[ImGuiKey_Escape])) {
+      ImGui::GetIO().KeysDown[ImGui::GetIO().KeyMap[ImGuiKey_Escape]] = 0;
+      finished = true;
+    }             
+    ImGui::SameLine();
+    if (ImGui::Button("Proceed##Proceed11")) {
+     int oldWidth = getCurrentMap().width;
+     int oldHeight = getCurrentMap().height;
+     oldArray = getCurrentMap().tiles;
+     int newWidth = borderRight-borderLeft;
+     int newHeight = borderBottom-borderTop;
+     getCurrentMap().tiles.resize(newWidth*newHeight);
+     getCurrentMap().width = newWidth;
+     getCurrentMap().height = newHeight;
+     for (int y = 0; y < newHeight; y++) {
+       for (int x = 0; x < newWidth; x++) {
+          int ox = x + borderLeft;
+          int oy = y + borderTop;
+          if (ox>=0&&ox<oldWidth&&oy>=0&&oy<oldHeight) {
+            getCurrentMap().tiles[x+y*newWidth] = oldArray[ox+oy*oldWidth];
+          } else {
+            getCurrentMap().tiles[x+y*newWidth].clear();
+          }
+       }
+     }
+     getCurrentMap().update();
+     finished = true;
+    }             
+    ImGui::End();
+    render();
+  
+    refreshGraphics();
+  } while(!finished);
+}
+
+void displayMapModal() {
+  switch(mapModal) {
+  case MAPMODAL_CANVAS: mapModalCanvas(); break;
+  }
+  mapModal = MAPMODAL_NONE;
+}
+
+void display_mapPainter() {
+  displayMenuBar_mapPainter();
+  displayMapWindow();
+  displaySpriteSelectWindow();
+  displayMapToolsWindow();
+  if (mapModal !=  MAPMODAL_NONE) {
+    displayMapModal();
+  }
+}

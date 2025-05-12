@@ -50,6 +50,8 @@ public:
   GLuint textureId;
   int scrollX,scrollY;
   int selectedX, selectedY;
+  int mouseX, mouseY;
+  int lastMouseX, lastMouseY;
   int width,height;
   bool mark;
   spArray<MapTile> tiles;
@@ -58,6 +60,10 @@ public:
     textureId = 0;
     selectedX = 0;
     selectedY = 0;
+    mouseX = 0;
+    mouseY = 0;
+    lastMouseX = 0;
+    lastMouseY = 0;
     scrollX = 0;
     scrollY = 0;
     width = 32;
@@ -181,6 +187,10 @@ void displayMenuBar_mapPainter() {
     ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(0xff/255.f,0xff/255.f,0xff/255.f,0xff/255.f));
     if (ImGui::BeginMainMenuBar()) {
       if (ImGui::BeginMenu("File")) {
+        ImGui::Separator();
+        if (ImGui::MenuItem("Save simple layer")) loadSave = LoadSave_SaveMapSimpleLayer;
+        if (ImGui::MenuItem("Load simple layer")) loadSave = LoadSave_LoadMapSimpleLayer;
+        ImGui::Separator();
         if (ImGui::MenuItem("Exit map painter")) {
           activeSubset = SUBSET_SPRITEPAINTER;
         }
@@ -189,6 +199,15 @@ void displayMenuBar_mapPainter() {
       if (ImGui::BeginMenu("Map")) {
         if (ImGui::MenuItem("Canvas")) {
           mapModal = MAPMODAL_CANVAS;
+        }
+        if (ImGui::MenuItem("Fill")) {
+          MapTile toFillWith;
+          int spriteNr = getCurrentTileSelect().spriteNr;
+          spriteNr = clamp(spriteNr,0,(int)sprites.size()-1);
+          toFillWith.tileIds.push_back(sprites[spriteNr].getId());
+          for (int i = 0; i < getCurrentMap().width*getCurrentMap().height; i++) {
+            getCurrentMap().tiles[i] = toFillWith;
+          }
         }
         ImGui::EndMenu();
       }
@@ -209,19 +228,26 @@ void displayMenuBar_mapPainter() {
     ImGui::PopStyleVar();
 }
 
-void paintAtSelected() {
-  int x = getCurrentMap().selectedX;
-  int y = getCurrentMap().selectedY;
+void paintLine(int sx, int sy, int ex, int ey) {
   int w = getCurrentMap().width;
   int h = getCurrentMap().height;
 
-  if (x>=0&&x<w&&y>=0&&x<h) {
-    int adr = x + y * w;
-    if (getCurrentMap().tiles[adr].tileIds.empty()) getCurrentMap().tiles[adr].tileIds.push_back(0);
-    int spr = getCurrentTileSelect().spriteNr;
-    spr = clamp(spr,0,(int)sprites.size()-1);
-    int tileId =  sprites[spr].getId();
-    getCurrentMap().tiles[adr].tileIds[0] = tileId;
+  double dx = ex - sx;
+  double dy = ey - sy;
+  double d = fabs(dx);
+  if (fabs(dy)>d) d = fabs(dy);
+  int di = floor(d)+1;
+  for (int k = 0; k <= di; k++) {
+    int x = (int)floor((ex-sx)*k/di+sx);
+    int y = (int)floor((ey-sy)*k/di+sy);
+    if (x>=0&&x<w&&y>=0&&x<h) {
+      int adr = x + y * w;
+      if (getCurrentMap().tiles[adr].tileIds.empty()) getCurrentMap().tiles[adr].tileIds.push_back(0);
+      int spr = getCurrentTileSelect().spriteNr;
+      spr = clamp(spr,0,(int)sprites.size()-1);
+      int tileId =  sprites[spr].getId();
+      getCurrentMap().tiles[adr].tileIds[0] = tileId;
+    }
   }
 }
 
@@ -282,8 +308,17 @@ void displayMapWindow() {
     if (mouseButtons & 1) {
       getCurrentMap().selectedX = getCurrentMap().scrollX + msx;
       getCurrentMap().selectedY = getCurrentMap().scrollY + msy;
+      getCurrentMap().mouseX = getCurrentMap().selectedX;
+      getCurrentMap().mouseY = getCurrentMap().selectedY;
+
       if (getCurrentMapTools().currentTool == MAPTOOL_PENCIL) {
-        paintAtSelected();
+        int sx = getCurrentMap().lastMouseX;
+        int sy = getCurrentMap().lastMouseY;
+        int ex = getCurrentMap().mouseX;
+        int ey = getCurrentMap().mouseY;
+        if (sx>=0&&sy>=0&&ex>=0&&ey>=0) {
+          paintLine(sx,sy,ex,ey);
+        }
       }
     }
     if (mouseButtons & 2) {
@@ -306,6 +341,10 @@ void displayMapWindow() {
     }
   }
   ImGui::End();
+  getCurrentMap().lastMouseX = getCurrentMap().mouseX;
+  getCurrentMap().lastMouseY = getCurrentMap().mouseY;
+  getCurrentMap().mouseX = -1;
+  getCurrentMap().mouseY = -1;
 }
 
 void displaySpriteSelectWindow() {
@@ -400,7 +439,7 @@ void displayMapToolsWindow() {
 
 spArray<MapTile> oldArray;
 
-void mapModalCanvas() {
+void mapModal_Canvas() {
   bool finished = false;
   bool first = true;
   int borderLeft = 0;
@@ -458,9 +497,51 @@ void mapModalCanvas() {
   } while(!finished);
 }
 
+bool saveMapSimpleLayer(const char *fname) {
+  FILE *out = fopen(fname,"wb");
+  if (out == NULL) {someError = true; return false;}
+  unsigned short t;
+  t = getCurrentMap().width;
+  fwrite(&t,1,2,out);
+  t = getCurrentMap().height;
+  fwrite(&t,1,2,out);
+  for (int y = 0; y < getCurrentMap().height; y++) {
+    for (int x = 0; x < getCurrentMap().width; x++) {
+      t = 0;
+      if (!getCurrentMap().tiles[x+y*getCurrentMap().width].tileIds.empty())
+        t = getCurrentMap().tiles[x+y*getCurrentMap().width].tileIds[0];
+      fwrite(&t,1,2,out);
+    }
+  }  
+   fclose(out);
+  return true;
+}
+
+bool loadMapSimpleLayer(const char *fname) {
+  FILE *in = fopen(fname,"rb");
+  if (in == NULL) {someError = true; return false;}
+  unsigned short t=0;
+  fread(&t,1,2,in);
+  getCurrentMap().width = t;
+  fread(&t,1,2,in);
+  getCurrentMap().height = t;
+  getCurrentMap().tiles.resize(getCurrentMap().width*getCurrentMap().height);
+  for (int y = 0; y < getCurrentMap().height; y++) {
+    for (int x = 0; x < getCurrentMap().width; x++) {
+      t = 0;                                                               
+      fread(&t,1,2,in);
+      getCurrentMap().tiles[x+y*getCurrentMap().width].clear();
+      if (t != 0) 
+        getCurrentMap().tiles[x+y*getCurrentMap().width].tileIds.push_back(t);
+    }
+  }  
+  fclose(in);
+  return true;
+}
+
 void displayMapModal() {
   switch(mapModal) {
-  case MAPMODAL_CANVAS: mapModalCanvas(); break;
+  case MAPMODAL_CANVAS: mapModal_Canvas(); break;
   }
   mapModal = MAPMODAL_NONE;
 }

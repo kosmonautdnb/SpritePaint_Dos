@@ -374,6 +374,8 @@ enum {
   LoadSave_ExportSpritesCounter = 14,
   LoadSave_ImportPSDLayers = 15,
   LoadSave_ImportAnimatedGif = 16,
+  LoadSave_LoadMapSimpleLayer = 17,
+  LoadSave_SaveMapSimpleLayer = 18,
 };
 
 int loadSave = LoadSave_None;
@@ -3195,12 +3197,16 @@ void loadPreviewPicture(const char *fileName) {
   delete[] img.data;
 }
 
+bool saveMapSimpleLayer(const char *fname);
+bool loadMapSimpleLayer(const char *fname);
+
 void displayLoadSave() {
   if (loadSave == LoadSave_None)
     return;
 
   bool isLoading = true;
   switch(loadSave) {
+  case LoadSave_SaveMapSimpleLayer:
   case LoadSave_ExportSpritesCounter:
   case LoadSave_ExportSprites:
   case LoadSave_ExportPalette:
@@ -3279,6 +3285,8 @@ void displayLoadSave() {
     case LoadSave_ExportSpritesCounter: {exportSpritesCounter(fname.c_str());} break;
     case LoadSave_ImportPSDLayers: {importPSDLayers(fname.c_str());} break;
     case LoadSave_ImportAnimatedGif: {importAnimatedGif(fname.c_str());} break;
+    case LoadSave_SaveMapSimpleLayer: {saveMapSimpleLayer(fname.c_str());} break;
+    case LoadSave_LoadMapSimpleLayer: {loadMapSimpleLayer(fname.c_str());} break;
     }
   }
 

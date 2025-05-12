@@ -33,7 +33,8 @@ BYTE 'S','P',Width,Height
 
 DWORDARRAY[Width*Height] rgbaPixelData
 
-BYTEARRAY[10] Name
+BYTEARRAY[8] Name
+BYTEARRAY[2] Id
 
 BYTE 'S','P',Width,Height
 

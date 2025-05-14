@@ -3634,10 +3634,15 @@ void displayColorWheel() {
   l->AddLine(ImVec2(hx,cp0.y-1),ImVec2(hx,cp0.y+COLORWHEELHUEY-1),0xffffffff);
   cp0.y += COLORWHEELHUEY+20;
   cp2 = cp0;
+  cp0.x += 30;
   cp2.x += COLORWHEELXRES;
-  cp2.y += 10;
+  cp2.y += 14;
   l->AddRectFilled(cp0,cp2,col);
   ImGui::Text(text);
+  if (colIdx >= 0 && colIdx < MAXPALETTECOLORS && ImGui::Button("Set")) {
+    getCurrentPalette().colors[colIdx] = fromColorString(text);
+    getCurrentPalette().update();
+  }
   ImGui::End();
 }
 

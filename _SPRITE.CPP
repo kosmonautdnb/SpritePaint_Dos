@@ -1421,6 +1421,7 @@ void handleToolPencil(int mx, int my) {
 }
 
 void handleToolFloodFill(int mx, int my) {
+  handleColorGet(mx,my);
   int w = getCurrentSprite().width;
   int h = getCurrentSprite().height;
   if (mx >= 0 && mx < w && my >= 0 && my < h) {

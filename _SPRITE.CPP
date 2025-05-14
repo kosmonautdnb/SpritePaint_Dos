@@ -902,10 +902,16 @@ bool exportSprite(const char *fileName) {
   RGBAImage img;
   img.width = getCurrentSprite().width;
   img.height = getCurrentSprite().height;
-  img.data = &getCurrentSprite().bitmap[0];
+  img.data = new unsigned int[img.width*img.height];
+  for (int y = 0; y < img.height; y++) {
+      for (int x = 0; x < img.width; x++) {
+          img.data[x + y * img.width] = getCurrentSprite().bitmap[x + y * MAXSPRITEWIDTH];
+      }
+  }
   String fName = String(fileName);
   if (fName.find(".")<0) fName += ".png";
   if (!img.savePNG(fName.c_str())) someError = true;
+  delete img.data;
   return !someError;
 }
 

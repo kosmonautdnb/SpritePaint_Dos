@@ -34,8 +34,10 @@ enum {
 class MapTools {
 public:
   int currentTool;
+  int randomAdd;
   MapTools() {
     currentTool = MAPTOOL_PENCIL;
+    randomAdd = 0;
   }
 };
 
@@ -200,11 +202,17 @@ void displayMenuBar_mapPainter() {
         }
         if (ImGui::MenuItem("Fill")) {
           MapTile toFillWith;
-          int spriteNr = getCurrentTileSelect().spriteNr;
-          if (spriteNr>=0&&spriteNr<(int)sprites.size())
-            toFillWith.tileIds.push_back(sprites[spriteNr].getId());
+          toFillWith.tileIds.push_back(0);
+          MapTile cleared;
           for (int i = 0; i < getCurrentMap().width*getCurrentMap().height; i++) {
-            getCurrentMap().tiles[i] = toFillWith;
+            int spriteNr = getCurrentTileSelect().spriteNr;
+            spriteNr += (rand() % abs(getCurrentMapTools().randomAdd))*sign(getCurrentMapTools().randomAdd);
+            if (spriteNr>=0&&spriteNr<(int)sprites.size()) {
+              toFillWith.tileIds[0]=sprites[spriteNr].getId();
+              getCurrentMap().tiles[i] = toFillWith;
+            } else {
+              getCurrentMap().tiles[i] = cleared;
+            }
           }
           updateMap();
         }
@@ -243,6 +251,7 @@ void paintLine(int sx, int sy, int ex, int ey) {
       updateMap();
       int adr = x + y * w;
       int spr = getCurrentTileSelect().spriteNr;
+      spr += (rand() % abs(getCurrentMapTools().randomAdd))*sign(getCurrentMapTools().randomAdd);
       if (spr >= 0 && spr < (int)sprites.size()) {
         int tileId =  sprites[spr].getId();
         if (getCurrentMap().tiles[adr].tileIds.empty()) 
@@ -404,6 +413,7 @@ void displaySpriteSelectWindow() {
       
       if (ImGui::IsMouseHoveringRect(cp,cp2) && (mouseButtons & 1)) {
         getCurrentTileSelect().spriteNr = currentSprite;
+        getCurrentMapTools().randomAdd = 0;
       }
 
       if (currentSprite==(int)sprites.size()-1) {
@@ -449,12 +459,13 @@ void displayMapToolsWindow() {
     ImGui::BeginChild("Child##Child12345",ImVec2(100,ts.y+10));
     ImGui::InputText("Name##Name12345",sprites[currentSprite].name,8);
     ImGui::Text("#%04x",sprites[currentSprite].getId());
-    ImGui::Text("Sprite:%d",currentSprite);
+    ImGui::Text("Sprite:%d/%d",currentSprite, sprites.size());
     ImGui::EndChild();
   } else {
     ImGui::Text("Sprite:Eraser");
   }
   mapButtonActive(TOOL_PENCIL); if (ImGui::Button("Pencil")) getCurrentMapTools().currentTool = MAPTOOL_PENCIL; mapButtonActiveEnd();
+  ImGui::InputInt("Random +", &getCurrentMapTools().randomAdd);
   ImGui::Text("Under Construction");
 
 

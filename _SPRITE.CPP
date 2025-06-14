@@ -1157,7 +1157,8 @@ void displayMenuBar() {
               getCurrentSprite().bitmap[x+y*MAXSPRITEWIDTH]=clipBoard[x+y*MAXSPRITEWIDTH];
             }
           }        
-        }
+          getCurrentSprite().update();
+       }
         if (ImGui::MenuItem("Clear sprite")) {
           unsigned int col = 0x00;
           for (int y = 0; y < MAXSPRITEHEIGHT; y++) {

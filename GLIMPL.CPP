@@ -1509,6 +1509,31 @@ void glPushMatrix() {
   glMatrixStackPos++;
 }
 
+#define FLIPRB(__v__) (((__v__)&0xff00ff00)|(((__v__)>>16) & 0x000000ff)|(((__v__)<<16) & 0x00ff0000))
+
+void glReadPixels (GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *pixels) {
+  for (int yp = 0; yp < height; yp++) {
+    int y2 = yp + glFrameBufferHeight - 1 - y;
+    if (y2 < 0 || y2 >= glFrameBufferHeight) continue;
+    for (int xp = 0; xp < width; xp++) {
+      int x2 = xp + x;
+      if (x2 < 0 || x2 >= glFrameBufferWidth) continue;
+      const unsigned int rgba = glFrameBuffer[x2+y2*glFrameBufferWidth];
+      if (type == GL_UNSIGNED_BYTE||type==GL_BYTE) {
+        switch(format) {
+        case GL_RGBA: {((unsigned int*)pixels)[xp+yp*width] = rgba;} break;
+        case GL_BGRA: {((unsigned int*)pixels)[xp+yp*width] = FLIPRB(rgba);} break;
+        case GL_RED: {((unsigned char*)pixels)[xp+yp*width] = rgba & 0xff;} break;
+        case GL_GREEN: {((unsigned char*)pixels)[xp+yp*width] = (rgba>>8)& 0xff;} break;
+        case GL_BLUE: {((unsigned char*)pixels)[xp+yp*width] = (rgba>>16)& 0xff;} break;
+        case GL_RGB: {unsigned char*c=&((unsigned char*)pixels)[(xp+yp*width)*3];c[0]=rgba&255;c[1]=(rgba>>8)&255;c[2]=(rgba>>16)&255;} break;
+        case GL_BGR: {unsigned char*c=&((unsigned char*)pixels)[(xp+yp*width)*3];c[2]=rgba&255;c[1]=(rgba>>8)&255;c[0]=(rgba>>16)&255;} break;
+        }
+      }
+    }
+  }
+}
+
 void glhRotate(GLdouble *matrix, GLfloat angleInRadians, GLfloat x, GLfloat y, GLfloat z) {
   double m[16], rotate[16];
   double OneMinusCosAngle, CosAngle, SinAngle;
@@ -1553,6 +1578,12 @@ void glhRotate(GLdouble *matrix, GLfloat angleInRadians, GLfloat x, GLfloat y, G
 
 void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z) {
   double *matrix = glContext.matrixForMode[glContext.matrixModeNr];
+  double l = sqrt(x*x+y*y+z*z);
+  if (l>0) {
+    x/=l;
+    y/=l;
+    z/=l;
+  }
   glhRotate(matrix,angle*2.0*PI/360.0,x,y,z);
   glUpdateMatrix();
 }
@@ -1894,7 +1925,7 @@ void glTexParameterfv (GLenum target, GLenum pname, GLfloat *param) {
   }
 }
 
-GLAPI void APIENTRY glBlendCOlor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha) {
+GLAPI void APIENTRY glBlendColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha) {
   glContext.blendColorRed = red;
   glContext.blendColorGreen = green;
   glContext.blendColorBlue = blue;
@@ -2436,6 +2467,58 @@ int glhUnProject(double winx, double winy, double winz,
   return 1;
 }
 
+int glhProjectfx(float objx, float objy, float objz,
+  float *modelview, float *projection,
+  int *viewport,
+  float *windowCoordinate) {
+  float in[4];
+  in[0] = objx;
+  in[1] = objy;
+  in[2] = objz;
+  in[3] = 1;
+  MultiplyMatrixByVector4by4OpenGL_FLOAT(in, modelview, in);
+  MultiplyMatrixByVector4by4OpenGL_FLOAT(in, projection, in);
+  if (in[3]==0) return 0;
+  in[0]/=in[3];
+  in[1]/=in[3];
+  in[2]/=in[3];
+  in[3] = 1;
+  in[0] *= viewport[2]*0.5*glContext.zoomX;
+  in[1] *= viewport[3]*-0.5*glContext.zoomY;
+  in[0] += viewport[0]+viewport[2]*0.5;
+  in[1] += viewport[1]+viewport[3]*0.5;
+  windowCoordinate[0] = in[0];
+  windowCoordinate[1] = in[1];
+  windowCoordinate[2] = in[2];
+  return 1;
+}
+
+int glhProjectx(double objx, double objy, double objz,
+  double *modelview, double *projection,
+  int *viewport,
+  double *windowCoordinate) {
+  double in[4];
+  in[0] = objx;
+  in[1] = objy;
+  in[2] = objz;
+  in[3] = 1;
+  MultiplyMatrixByVector4by4OpenGL_DOUBLE(in, modelview, in);
+  MultiplyMatrixByVector4by4OpenGL_DOUBLE(in, projection, in);
+  if (in[3]==0) return 0;
+  in[0]/=in[3];
+  in[1]/=in[3];
+  in[2]/=in[3];
+  in[3] = 1;
+  in[0] *= viewport[2]*0.5*glContext.zoomX;
+  in[1] *= viewport[3]*-0.5*glContext.zoomY;
+  in[0] += viewport[0]+viewport[2]*0.5;
+  in[1] += viewport[1]+viewport[3]*0.5;
+  windowCoordinate[0] = in[0];
+  windowCoordinate[1] = in[1];
+  windowCoordinate[2] = in[2];
+  return 1;
+}
+
 int glhProjectf(float objx, float objy, float objz,
   float *modelview, float *projection,
   int *viewport,
@@ -2655,6 +2738,15 @@ void gluLookAt(GLfloat cx,GLfloat cy,GLfloat cz,GLfloat ox,GLfloat oy,GLfloat oz
   glUpdateMatrix();
 }
 
+GLint gluProjectfx(GLfloat objX, GLfloat objY, GLfloat objZ, GLfloat *model, GLfloat *projection, GLint *view, GLfloat *winX, GLfloat *winY, GLfloat *winZ) {
+  float d[3];
+  const GLint r = glhProjectfx(objX, objY, objZ, model, projection, view, d);
+  *winX = d[0];
+  *winY = d[1];
+  *winZ = d[2];
+  return r;
+}
+
 GLint gluProjectf(GLfloat objX, GLfloat objY, GLfloat objZ, GLfloat *model, GLfloat *projection, GLint *view, GLfloat *winX, GLfloat *winY, GLfloat *winZ) {
   float d[3];
   const GLint r = glhProjectf(objX, objY, objZ, model, projection, view, d);
@@ -2670,6 +2762,15 @@ GLint gluUnProjectf(GLfloat winX, GLfloat winY, GLfloat winZ, GLfloat *model, GL
   *objX = d[0];
   *objY = d[1];
   *objZ = d[2];
+  return r;
+}
+
+GLint gluProjectx(GLdouble objX, GLdouble objY, GLdouble objZ, GLdouble *model, GLdouble *projection, GLint *view, GLdouble *winX, GLdouble *winY, GLdouble *winZ) {
+  double d[3];
+  const GLint r = glhProjectx(objX, objY, objZ, model, projection, view, d);
+  *winX = d[0];
+  *winY = d[1];
+  *winZ = d[2];
   return r;
 }
 
@@ -2829,6 +2930,7 @@ __inline bool glCheckDepthFunction(float depthBufferValue, float newValue, int d
 
 __inline int textureWrap(float tx, int siz, GLenum filterMode) {
   int t = (int)floor(tx);
+  if (t<siz&&t>=0) return t;
   switch(filterMode) {
   case GL_MIRRORED_REPEAT: {
       t = t<0?(siz*2-1-((-t)%(siz*2))):(t%(siz*2));
@@ -3163,7 +3265,7 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
   if (vk1->sy>vk2->sy) {glVertex *t; t = vk1; vk1 = vk2; vk2 = t;}\
 
   glTexture *t = &glTextures[context->boundTextures[context->activeTexture]];
-  bool textured = true && context->isEnabled(GL_TEXTURE_2D) && t->data != NULL && t->name != 0;
+  bool textured = context->isEnabled(GL_TEXTURE_2D) && t->data != NULL && t->name != 0;
   bool filtering = (t->magFilter != GL_NEAREST)&&(t->magFilter != GL_NEAREST_MIPMAP_NEAREST)&&(t->magFilter != GL_NEAREST_MIPMAP_LINEAR);
   float tx0,ty0,tz0,tw0;
   float tx1,ty1,tz1,tw1;
@@ -3220,7 +3322,7 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
   int depthFunction = context->depthFunc;
   bool depthTest = context->isEnabled(GL_DEPTH_TEST);
   int alphaFunction = context->alphaFunc;
-  float alphaRef = context->alphaFuncRef;
+  int alphaRef = (int)floor(context->alphaFuncRef*255.f);
   bool alphaTest = context->isEnabled(GL_ALPHA_TEST);
 
   // rgba
@@ -3309,13 +3411,19 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
   b2 *= v2w;
   a2 *= v2w;
 
+  double iw = 0;
+  const bool wValue = textured||interpolateColor;
+  const bool normalAlphaBlending = blendFuncS == GL_SRC_ALPHA && blendFuncD == GL_ONE_MINUS_SRC_ALPHA && blendEquation == GL_FUNC_ADD;
+  const bool preMultipliedAlpha = blendFuncS == GL_ONE && blendFuncD == GL_ONE_MINUS_SRC_ALPHA && blendEquation == GL_FUNC_ADD;
+  const bool normalAlphaBlendingOrPreMultipliedAlpha = normalAlphaBlending || preMultipliedAlpha;
+
   __PAINTPOLYQUAD_BEGINY__
   __PAINTPOLYQUAD_INITBARYFORX__
   __PAINTPOLYQUAD_BEGINX__
       if (bary0>=0&&bary1>=0&&bary2>=0) {
         double zp = __BARY0__(v0z)+__BARY1__(v1z)+__BARY2__(v2z);
         if ((!depthTest)||glCheckDepthFunction(*zDest,zp,depthFunction)) {
-          double iw = 1.0/(__BARY0__(v0w)+__BARY1__(v1w)+__BARY2__(v2w));
+          if (wValue) iw = 1.0/(__BARY0__(v0w)+__BARY1__(v1w)+__BARY2__(v2w));
           if (interpolateColor) {
             r = (__BARY0__(r0)+__BARY1__(r1)+__BARY2__(r2))*iw;
             g = (__BARY0__(g0)+__BARY1__(g1)+__BARY2__(g2))*iw;
@@ -3360,8 +3468,7 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
               rgba += (((rgba01 & 0x00ff00ff)*p4v)>>8)&0x00ff00ff;
             } else {
               if (tix0>=0&&tiy0>=0) {
-                tiy0 *= twidth0;
-                rgba  = tdata0[tix0+tiy0];
+                rgba  = tdata0[tix0+tiy0*twidth0];
               } else {
                 rgba = borderColor;
               }
@@ -3416,15 +3523,14 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
           }
           bool writePixel = true;
           if (alphaTest) {
-            float alpha = (float)a / 255.f;
             switch(alphaFunction) {
             case GL_NEVER: {writePixel = false;} break;
-            case GL_LESS: {writePixel = alpha<alphaRef;} break;
-            case GL_EQUAL: {writePixel = alpha==alphaRef;} break;
-            case GL_LEQUAL: {writePixel = alpha<=alphaRef;} break;
-            case GL_GREATER: {writePixel = alpha>alphaRef;} break;
-            case GL_NOTEQUAL: {writePixel = alpha!=alphaRef;} break;
-            case GL_GEQUAL: {writePixel = alpha>=alphaRef;} break;
+            case GL_LESS: {writePixel = a<alphaRef;} break;
+            case GL_EQUAL: {writePixel = a==alphaRef;} break;
+            case GL_LEQUAL: {writePixel = a<=alphaRef;} break;
+            case GL_GREATER: {writePixel = a>alphaRef;} break;
+            case GL_NOTEQUAL: {writePixel = a!=alphaRef;} break;
+            case GL_GEQUAL: {writePixel = a>=alphaRef;} break;
             case GL_ALWAYS: {writePixel = true;} break;
             }
           }
@@ -3443,13 +3549,26 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
               }
             else {
               if (notMasked) {
-                if (blendFuncS == GL_SRC_ALPHA && blendFuncD == GL_ONE_MINUS_SRC_ALPHA && blendEquation == GL_FUNC_ADD) {
+                if (normalAlphaBlendingOrPreMultipliedAlpha) {
                   unsigned int a8 = (a<<16)/255;
                   unsigned char *c = (unsigned char*)pDest;
-                  c[0] += ((r-c[0])*a8)>>16;
-                  c[1] += ((g-c[1])*a8)>>16;
-                  c[2] += ((b-c[2])*a8)>>16;
-                  c[3] += ((a-c[3])*a8)>>16;
+                  if (preMultipliedAlpha) {
+                    a8 = 0x10000-a8;
+                    r += (c[0]*a8)>>16;
+                    g += (c[1]*a8)>>16;
+                    b += (c[2]*a8)>>16;
+                    a += (c[3]*a8)>>16;
+                    if (r>255) r = 255;
+                    if (g>255) g = 255;
+                    if (b>255) b = 255;
+                    if (a>255) a = 255;
+                    *pDest=r|(g<<8)|(b<<16)|(a<<24);
+                  } else {
+                    c[0] += ((r-c[0])*a8)>>16;
+                    c[1] += ((g-c[1])*a8)>>16;
+                    c[2] += ((b-c[2])*a8)>>16;
+                    c[3] += ((a-c[3])*a8)>>16;    
+                  }
                 } else {
                   *pDest=doBlend(*pDest,r|(g<<8)|(b<<16)|(a<<24),blendFuncS,blendFuncD,constantColor,blendEquation);
                 }
@@ -3476,6 +3595,8 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
 }
 
 void glDrawQuad(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2,glVertex *v3) {
+  // 12 if ccw
+  // 03
   glDrawTriangle(context,v0,v1,v2);
   glDrawTriangle(context,v2,v3,v0);
 }
@@ -3724,6 +3845,7 @@ GLboolean glVesa(int xRes,int yRes, int bPP) {
   RMREGS regs;
   regs.ax = 0x4f00;
   VBE_callESDI(&regs,&vbeInfo,sizeof(glVbeInfoBlock));
+  if (regs.ax != 0x004f) return false;
   uint16_t *u = (uint16_t *)glVesaPointer(vbeInfo.videoModes);
   uint16_t *v = u;
   while(*v != 0xffff) {v++;}
@@ -3745,6 +3867,7 @@ GLboolean glVesa(int xRes,int yRes, int bPP) {
       glFrameBuffer = new unsigned int[glFrameBufferWidth*glFrameBufferHeight];
       glStencilBuffer = new unsigned int[glFrameBufferWidth*glFrameBufferHeight];
       glDepthBuffer = new float[glFrameBufferWidth*glFrameBufferHeight];
+      memset(glFrameBufferDedicated,0,glFrameBufferWidth*glFrameBufferHeight*4);
       memset(glFrameBuffer,0,glFrameBufferWidth*glFrameBufferHeight*4);
       memset(glStencilBuffer,0,glFrameBufferWidth*glFrameBufferHeight*4);
       memset(glDepthBuffer,0,glFrameBufferWidth*glFrameBufferHeight*4);
@@ -3763,7 +3886,126 @@ GLboolean glVesa(int xRes,int yRes, int bPP) {
   delete[] w;
   return false;
 }
+static void setBiosCursor(int x, int y) {
+    union REGS regs;
+    regs.x.eax = 0x200;
+    regs.h.bh = 0;
+    regs.h.dl = x;
+    regs.h.dh = y;
+    int386(0x10, &regs, &regs);
+}
+static unsigned int toColor(int r,int g,int b) {
+  if (r < 0) r = 0;
+  if (g < 0) g = 0;
+  if (b < 0) b = 0;
+  if (r > 255) r = 255;
+  if (g > 255) g = 255;
+  if (b > 255) b = 255;
+  return r|(g<<8)|(b<<16)|0xff000000;
+}
+static void setPalette(int index, unsigned int color) {
+  outp(0x3c8,index);
+  outp(0x3c9,(color & 255)>>2);
+  outp(0x3c9,((color>>8) & 255)>>2);
+  outp(0x3c9,((color>>16) & 255)>>2);
+}
+static unsigned int getPalette(int index) {
+  outp(0x3c8,index);
+  int r = inp(0x3c9);
+  int g = inp(0x3c9);
+  int b = inp(0x3c9);
+  return 0xff000000|(r<<2)|(g<<10)|(b<<18);
+}
+static void setHiColorPalette() {
+  int i;
+  for (i = 0; i < 64; i++) setPalette(i,toColor(0,i*4+3,0));
+  for (i = 0; i < 16*8; i++) setPalette(i+128,toColor((i/8)*16+15,0,(i & 7)*32+31));
+}
+static void setModeX() {
+  outp(0x3c4,4);
+  int a = inp(0x3c5);
+  a &= 255-8;
+  a |= 4;
+  outp(0x3c5,a);  
+  outp(0x3d4,0x14);
+  a = inp (0x3d5);
+  a &= 255-64;
+  outp(0x3d5,a);
+  outp(0x3d4,0x17);
+  a = inp(0x3d5);
+  a |= 64;
+  outp(0x3d5,a);
+}
+static void set400Lines() {
+  outp(0x3d4,9);
+  int a = inp(0x3d5);
+  a &= 16+32+64;//001110000b
+  outp(0x3d5,a);
+}
+static void setVGABufferStart(unsigned int adr) {
+  outp(0x3d4,0x0c);
+  outp(0x3d5,(adr >> 8) & 255);
+  outp(0x3d4,0x0d);
+  outp(0x3d5,adr & 255);
+}
+static bool hiColor = false;
+static bool otherFrame = false;
+unsigned char hiRedTab[256];
+GLboolean glVGA() {
+  glGraphicsModeToRestore = getBiosGraphicsMode();
+  setBiosGraphicsMode(0x13);
+  setModeX();
+  set400Lines();
+  setHiColorPalette();
+  hiColor = true;
+  otherFrame = false;
+  unsigned char *vga = (unsigned char*)(0xa0000);
+  memset(vga,0,0x10000);
+  setVGABufferStart(otherFrame ? 0x8000 : 0x0000);
+  int xRes = 320;
+  int yRes = 200;
+  glFrameBufferWidth = xRes;
+  glFrameBufferHeight = yRes;
+  glFrameBuffer = new unsigned int[glFrameBufferWidth*glFrameBufferHeight];
+  glStencilBuffer = new unsigned int[glFrameBufferWidth*glFrameBufferHeight];
+  glDepthBuffer = new float[glFrameBufferWidth*glFrameBufferHeight];
+  memset(glFrameBuffer,0,glFrameBufferWidth*glFrameBufferHeight*4);
+  memset(glStencilBuffer,0,glFrameBufferWidth*glFrameBufferHeight*4);
+  memset(glDepthBuffer,0,glFrameBufferWidth*glFrameBufferHeight*4);
+  glFrameBufferWidth0 = glFrameBufferWidth;
+  glFrameBufferHeight0 = glFrameBufferHeight;
+  glFrameBuffer0 = glFrameBuffer;
+  glDepthBuffer0 = glDepthBuffer;
+  glStencilBuffer0 = glStencilBuffer;
+  glSetupMouse();
+  glStartClock = clock();
+  glViewport(0,0,xRes,yRes);
+  for (int i = 0; i < 256; i++) {
+    hiRedTab[i] = 128+(((i>>4)&15)<<3);
+  }
+  return true;
+}
+void glRefreshHiColor() {
+  unsigned char *vga = (unsigned char*)(0xa0000+(otherFrame?0x8000:0x00));
+  for (int p = 0; p < 4; p++) {
+    outp(0x3c4,0x02);
+    outp(0x3c5,1<<p);
+    unsigned char *s = (unsigned char*)&glFrameBuffer[p];
+    for (int y = 0; y < 200; y++) {
+      unsigned char *w1 = &vga[y*(320/4*2)];
+      unsigned char *w2 = &vga[y*(320/4*2)+320/4];
+      for (int x = 320/4; x > 0; x--) {
+        *w2++ = s[1]>>2;
+        *w1++ = (s[2]>>5)|hiRedTab[s[0]];
+        s += 16;
+      }
+    }
+  }
+  setVGABufferStart(otherFrame ? 0x8000 : 0x0000);
+  otherFrame = !otherFrame;   
+}
 void glRefresh() {
+  if (hiColor) {glRefreshHiColor();return;}
   unsigned int rgba;
   for (int i = 0; i < glFrameBufferWidth0*glFrameBufferHeight0; i++) {
     rgba = glFrameBuffer0[i];
@@ -3774,7 +4016,7 @@ void glDone() {
   delete[] glFrameBuffer0;
   delete[] glDepthBuffer0;
   delete[] glStencilBuffer0;
-  unmapPhysical((unsigned int)glFrameBufferDedicated);
+  if (!hiColor) unmapPhysical((unsigned int)glFrameBufferDedicated);
   setBiosGraphicsMode(glGraphicsModeToRestore);
 }
 

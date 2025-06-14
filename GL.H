@@ -46,6 +46,8 @@ extern "C" {
 #define GL_TEXTURE_CUBE_MAP_POSITIVE_Z 0x8519 // gl3.h
 #define GL_TEXTURE_CUBE_MAP_NEGATIVE_Z 0x851a //gl3.h
 #define GL_QUADS 0x0007 // :mad:
+#define GL_GREEN 0x1904 // :mad:
+#define GL_BLUE 0x1905 // :mad:
 #define GL_RED 0x190b // :mad:
 #define GL_RG 0x190c // :mad:
 #define GL_BGR 0x190d // :mad:
@@ -617,7 +619,7 @@ GLAPI void APIENTRY glPolygonStipple (const GLubyte *mask);
 GLAPI void APIENTRY glPopMatrix (void); // supported
 GLAPI void APIENTRY glPushMatrix (void); // supported
 GLAPI void APIENTRY glRasterPos3f (GLfloat x, GLfloat y, GLfloat z);
-GLAPI void APIENTRY glReadPixels (GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *pixels);
+GLAPI void APIENTRY glReadPixels (GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, GLvoid *pixels); // supported
 GLAPI void APIENTRY glRotatef (GLfloat angle, GLfloat x, GLfloat y, GLfloat z); // supported
 GLAPI void APIENTRY glScalef (GLfloat x, GLfloat y, GLfloat z); // supported
 GLAPI void APIENTRY glScissor (GLint x, GLint y, GLsizei width, GLsizei height); // supported
@@ -651,6 +653,9 @@ GLAPI void APIENTRY glMateriali(GLenum face, GLenum pname, GLint param); // :mad
 GLAPI void APIENTRY glFrustum(float left, float right, float bottom, float top, float znear, float zfar); // :mad: // supported
 GLAPI void APIENTRY gluPerspective(GLfloat fov, GLfloat aspect, GLfloat nearPlane, GLfloat farPlane); // :mad: // supported
 GLAPI void APIENTRY gluLookAt(GLfloat cx,GLfloat cy,GLfloat cz,GLfloat ox,GLfloat oy,GLfloat oz,GLfloat ux,GLfloat uy,GLfloat uz); // :mad: // supported
+// gluProject/gluUnproject seem not to work with ortho matrices, use gluProjectx for direct point transformation without strange enhancements/optimizations
+GLAPI GLint APIENTRY gluProjectfx(GLfloat objX, GLfloat objY, GLfloat objZ, GLfloat *model, GLfloat *projection, GLint *view, GLfloat *winX, GLfloat *winY, GLfloat *winZ); // supported
+GLAPI GLint APIENTRY gluProjectx(GLdouble objX, GLdouble objY, GLdouble objZ, GLdouble *model, GLdouble *projection, GLint *view, GLdouble *winX, GLdouble *winY, GLdouble *winZ); // supported
 GLAPI GLint APIENTRY gluProjectf(GLfloat objX, GLfloat objY, GLfloat objZ, GLfloat *model, GLfloat *projection, GLint *view, GLfloat *winX, GLfloat *winY, GLfloat *winZ); // supported
 GLAPI GLint APIENTRY gluUnProjectf(GLfloat winX, GLfloat winY, GLfloat winZ, GLfloat *model, GLfloat *projection, GLint *view, GLfloat *objX, GLfloat *objY, GLfloat *objZ); // supported
 GLAPI GLint APIENTRY gluInvertMatrixf(const float *m, float *dest); // supported
@@ -674,7 +679,7 @@ GLAPI void APIENTRY glFogf(GLenum pname, GLfloat param); // :mad: // supported
 GLAPI void APIENTRY glFogfv(GLenum pname, GLfloat *params); // :mad: // supported
 GLAPI void APIENTRY glDeleteTextures (GLsizei n, GLuint *textures); // :mad: // supported
 GLAPI void APIENTRY glTexParameterfv (GLenum target, GLenum pname, GLfloat *param); // :mad: // supported
-GLAPI void APIENTRY glBlendCOlor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha); // :mad: // supported
+GLAPI void APIENTRY glBlendColor(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha); // :mad: // supported
 GLAPI void APIENTRY glBlendEquation(GLenum mode); // :mad: // supported
 
 
@@ -693,6 +698,7 @@ extern float *glDepthBuffer;
                           // e.g. glVesa(320,200,32) enables Vesa Mode 320x200x32BitColors
 GLboolean glVesa(int xRes,int yRes, int bPP);
                           // to be called in a loop, copies the frameBuffer to the screen and updates per frame stuff
+GLboolean glVGA(); // 320x200x13bit may return true even if it's not supported (it's a fallback for no vesa320x200x32)
 void glRefresh();
                           // can be called to close the vesa mode and clean up opengl again
 void glDone();
@@ -753,14 +759,32 @@ bool glPixel(bool newXYZ, float xp, float yp, float zp, int x, int y, unsigned i
 #define GL_VK_F8_SHIFT (91*256)
 #define GL_VK_F9_SHIFT (92*256)
 #define GL_VK_F10_SHIFT (93*256)
-#define GL_VK_A_ALT (30*256)
-#define GL_VK_B_ALT (48*256)
-#define GL_VK_C_ALT (46*256)
-#define GL_VK_D_ALT (32*256)
+#define GL_VK_Q_ALT (16*256)
+#define GL_VK_W_ALT (17*256)
 #define GL_VK_E_ALT (18*256)
+#define GL_VK_R_ALT (19*256)
+#define GL_VK_T_ALT (20*256)
+#define GL_VK_Z_ALT (21*256)
+#define GL_VK_U_ALT (22*256)
+#define GL_VK_I_ALT (23*256)
+#define GL_VK_O_ALT (24*256)
+#define GL_VK_P_ALT (25*256)
+#define GL_VK_A_ALT (30*256)
+#define GL_VK_S_ALT (31*256)
+#define GL_VK_D_ALT (32*256)
 #define GL_VK_F_ALT (33*256)
 #define GL_VK_G_ALT (34*256)
 #define GL_VK_H_ALT (35*256)
+#define GL_VK_J_ALT (36*256)
+#define GL_VK_K_ALT (37*256)
+#define GL_VK_L_ALT (38*256)
+#define GL_VK_Y_ALT (44*256)
+#define GL_VK_X_ALT (45*256)
+#define GL_VK_C_ALT (46*256)
+#define GL_VK_V_ALT (47*256)
+#define GL_VK_B_ALT (48*256)
+#define GL_VK_N_ALT (49*256)
+#define GL_VK_M_ALT (50*256)
 #define GL_VK_TAB 9
 #define GL_VK_TAB_SHIFT (15*256)
 #define GL_VK_ENTF (83*256)

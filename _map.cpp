@@ -251,11 +251,12 @@ void paintLine(int sx, int sy, int ex, int ey) {
       updateMap();
       int adr = x + y * w;
       int spr = getCurrentTileSelect().spriteNr;
-      spr += (rand() % abs(getCurrentMapTools().randomAdd))*sign(getCurrentMapTools().randomAdd);
+      if (abs(getCurrentMapTools().randomAdd)>0)
+        spr += (rand() % abs(getCurrentMapTools().randomAdd))*sign(getCurrentMapTools().randomAdd);
       if (spr >= 0 && spr < (int)sprites.size()) {
-        int tileId =  sprites[spr].getId();
         if (getCurrentMap().tiles[adr].tileIds.empty()) 
           getCurrentMap().tiles[adr].tileIds.push_back(0);
+        const int tileId =  sprites[spr].getId();
         getCurrentMap().tiles[adr].tileIds[0] = tileId;
       } else {
         getCurrentMap().tiles[adr].tileIds.clear();

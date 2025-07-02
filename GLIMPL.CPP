@@ -6,13 +6,19 @@
 // It is required that Vesa 3.0 e.g. 640x480x32 works on your device.
 // by Stefan Mader in 2025
 //-------------------------
+// Issues: In very rare cases (on 3d x or y==0) polygons may have seams
 #include "gl.h"
 #include <string.h>
 #include <math.h>
 #include <time.h>
 
 #define PI 3.14159265358979323846
+#define FLOOR(__v__) (__v__) // not needed since conversion to int truncates
 
+double glPixelCenterX = -0.5;
+double glPixelCenterY = -0.5;
+double glTexelCenterX = -0.5f;
+double glTexelCenterY = -0.5f;
 unsigned int *glFrameBufferDedicated = NULL; // linear framebuffer
 int glFrameBufferWidth = 0;
 int glFrameBufferHeight = 0;
@@ -429,6 +435,8 @@ int glTransformVertex(_GLContext *context, glVertex *v, bool clip) {
   v->sy *= (context->viewportY1-context->viewportY0)*-0.5*context->zoomY;
   v->sx += (context->viewportX0+context->viewportX1)*0.5;
   v->sy += (context->viewportY0+context->viewportY1)*0.5;
+  v->sx += glPixelCenterX;
+  v->sy += glPixelCenterY;
   return 0;
 }
 
@@ -916,19 +924,19 @@ void glEmitVertex() {
           double pointSizeX = glContext.pointSize*0.5*glContext.zoomX;
           double pointSizeY = glContext.pointSize*0.5*glContext.zoomY;
           glVertices[3].textureX = 0;
-          glVertices[3].textureY = 0;
+          glVertices[3].textureY = 1;
           glVertices[3].sx -= pointSizeX;
           glVertices[3].sy -= pointSizeY;
           glVertices[2].textureX = 1;
-          glVertices[2].textureY = 0;
+          glVertices[2].textureY = 1;
           glVertices[2].sx += pointSizeX;
           glVertices[2].sy -= pointSizeY;
           glVertices[1].textureX = 1;
-          glVertices[1].textureY = 1;
+          glVertices[1].textureY = 0;
           glVertices[1].sx += pointSizeX;
           glVertices[1].sy += pointSizeY;
           glVertices[0].textureX = 0;
-          glVertices[0].textureY = 1;
+          glVertices[0].textureY = 0;
           glVertices[0].sx -= pointSizeX;
           glVertices[0].sy += pointSizeY;
           int clipFlags = glClipVertex(&glContext,&glVertices[0]);
@@ -964,6 +972,7 @@ void glAlphaFunc(GLenum func, GLclampf ref) {
 }
 
 void glBegin(GLenum mode) {
+  //if (glContext.beginMode != 0) {glDone();exit(0);}
   glContext.beginMode = mode;
   glCurrentVertexElement = 0;
 }
@@ -1186,7 +1195,7 @@ void glGetBooleanv(GLenum pname, GLboolean *params) {
   case GL_POINT_SIZE: {*params=(int)floor(glContext.pointSize);} break;
   case GL_PROJECTION_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_PROJECTION&1][i];} break;
   case GL_RED_BITS: {*params=8;} break;
-  case GL_SCISSOR_BOX: {params[0]=glContext.scissorX0;params[1]=glFrameBufferHeight-glContext.scissorY0;params[2]=glContext.scissorX1-glContext.scissorX0;params[3]=glContext.scissorY1-glContext.scissorY0;} break;
+  case GL_SCISSOR_BOX: {params[0]=glContext.scissorX0;params[1]=glFrameBufferHeight-glContext.scissorY1;params[2]=glContext.scissorX1-glContext.scissorX0;params[3]=glContext.scissorY1-glContext.scissorY0;} break;
   case GL_SCISSOR_TEST: {*params=glIsEnabled(GL_SCISSOR_TEST);} break;
   case GL_STENCIL_BITS: {*params=8;} break;
   case GL_STENCIL_CLEAR_VALUE: {*params=glContext.clearStencil;} break;
@@ -1196,7 +1205,7 @@ void glGetBooleanv(GLenum pname, GLboolean *params) {
   case GL_TEXTURE_2D: {*params=glIsEnabled(GL_TEXTURE_2D);} break;
   case GL_TRANSPOSE_PROJECTION_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_PROJECTION&1][(i&3)*4+i/4];} break;
   case GL_TRANSPOSE_MODELVIEW_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_MODELVIEW&1][(i&3)*4+i/4];} break;
-  case GL_VIEWPORT: {params[0]=glContext.viewportX0;params[1]=glContext.viewportY0;params[2]=glContext.viewportX1-glContext.viewportX0;params[3]=glContext.viewportY1-glContext.viewportY0;} break;
+  case GL_VIEWPORT: {params[0]=glContext.viewportX0;params[1]=glFrameBufferHeight-glContext.viewportY1;params[2]=glContext.viewportX1-glContext.viewportX0;params[3]=glContext.viewportY1-glContext.viewportY0;} break;
   case GL_ZOOM_X: {*params=(int)floor(glContext.zoomX);} break;
   case GL_ZOOM_Y: {*params=(int)floor(glContext.zoomY);;} break;
   }
@@ -1239,7 +1248,7 @@ void glGetDoublev (GLenum pname, GLdouble *params) {
   case GL_POINT_SIZE: {*params=glContext.pointSize;} break;
   case GL_PROJECTION_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_PROJECTION&1][i];} break;
   case GL_RED_BITS: {*params=8;} break;
-  case GL_SCISSOR_BOX: {params[0]=glContext.scissorX0;params[1]=glFrameBufferHeight-glContext.scissorY0;params[2]=glContext.scissorX1-glContext.scissorX0;params[3]=glContext.scissorY1-glContext.scissorY0;} break;
+  case GL_SCISSOR_BOX: {params[0]=glContext.scissorX0;params[1]=glFrameBufferHeight-glContext.scissorY1;params[2]=glContext.scissorX1-glContext.scissorX0;params[3]=glContext.scissorY1-glContext.scissorY0;} break;
   case GL_SCISSOR_TEST: {*params=glIsEnabled(GL_SCISSOR_TEST);} break;
   case GL_STENCIL_BITS: {*params=8;} break;
   case GL_STENCIL_CLEAR_VALUE: {*params=glContext.clearStencil;} break;
@@ -1249,7 +1258,7 @@ void glGetDoublev (GLenum pname, GLdouble *params) {
   case GL_TEXTURE_2D: {*params=glIsEnabled(GL_TEXTURE_2D);} break;
   case GL_TRANSPOSE_PROJECTION_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_PROJECTION&1][(i&3)*4+i/4];} break;
   case GL_TRANSPOSE_MODELVIEW_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_MODELVIEW&1][(i&3)*4+i/4];} break;
-  case GL_VIEWPORT: {params[0]=glContext.viewportX0;params[1]=glContext.viewportY0;params[2]=glContext.viewportX1-glContext.viewportX0;params[3]=glContext.viewportY1-glContext.viewportY0;} break;
+  case GL_VIEWPORT: {params[0]=glContext.viewportX0;params[1]=glFrameBufferHeight-glContext.viewportY1;params[2]=glContext.viewportX1-glContext.viewportX0;params[3]=glContext.viewportY1-glContext.viewportY0;} break;
   case GL_ZOOM_X: {*params=glContext.zoomX;} break;
   case GL_ZOOM_Y: {*params=glContext.zoomY;;} break;
   }
@@ -1292,7 +1301,7 @@ void glGetFloatv (GLenum pname, GLfloat *params) {
   case GL_POINT_SIZE: {*params=glContext.pointSize;} break;
   case GL_PROJECTION_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_PROJECTION&1][i];} break;
   case GL_RED_BITS: {*params=8;} break;
-  case GL_SCISSOR_BOX: {params[0]=glContext.scissorX0;params[1]=glFrameBufferHeight-glContext.scissorY0;params[2]=glContext.scissorX1-glContext.scissorX0;params[3]=glContext.scissorY1-glContext.scissorY0;} break;
+  case GL_SCISSOR_BOX: {params[0]=glContext.scissorX0;params[1]=glFrameBufferHeight-glContext.scissorY1;params[2]=glContext.scissorX1-glContext.scissorX0;params[3]=glContext.scissorY1-glContext.scissorY0;} break;
   case GL_SCISSOR_TEST: {*params=glIsEnabled(GL_SCISSOR_TEST);} break;
   case GL_STENCIL_BITS: {*params=8;} break;
   case GL_STENCIL_CLEAR_VALUE: {*params=glContext.clearStencil;} break;
@@ -1302,7 +1311,7 @@ void glGetFloatv (GLenum pname, GLfloat *params) {
   case GL_TEXTURE_2D: {*params=glIsEnabled(GL_TEXTURE_2D);} break;
   case GL_TRANSPOSE_PROJECTION_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_PROJECTION&1][(i&3)*4+i/4];} break;
   case GL_TRANSPOSE_MODELVIEW_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_MODELVIEW&1][(i&3)*4+i/4];} break;
-  case GL_VIEWPORT: {params[0]=glContext.viewportX0;params[1]=glContext.viewportY0;params[2]=glContext.viewportX1-glContext.viewportX0;params[3]=glContext.viewportY1-glContext.viewportY0;} break;
+  case GL_VIEWPORT: {params[0]=glContext.viewportX0;params[1]=glFrameBufferHeight-glContext.viewportY1;params[2]=glContext.viewportX1-glContext.viewportX0;params[3]=glContext.viewportY1-glContext.viewportY0;} break;
   case GL_ZOOM_X: {*params=glContext.zoomX;} break;
   case GL_ZOOM_Y: {*params=glContext.zoomY;} break;
   }
@@ -1345,7 +1354,7 @@ void glGetIntegerv (GLenum pname, GLint *params) {
   case GL_POINT_SIZE: {*params=(int)floor(glContext.pointSize);} break;
   case GL_PROJECTION_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_PROJECTION&1][i];} break;
   case GL_RED_BITS: {*params=8;} break;
-  case GL_SCISSOR_BOX: {params[0]=glContext.scissorX0;params[1]=glFrameBufferHeight-glContext.scissorY0;params[2]=glContext.scissorX1-glContext.scissorX0;params[3]=glContext.scissorY1-glContext.scissorY0;} break;
+  case GL_SCISSOR_BOX: {params[0]=glContext.scissorX0;params[1]=glFrameBufferHeight-glContext.scissorY1;params[2]=glContext.scissorX1-glContext.scissorX0;params[3]=glContext.scissorY1-glContext.scissorY0;} break;
   case GL_SCISSOR_TEST: {*params=glIsEnabled(GL_SCISSOR_TEST);} break;
   case GL_STENCIL_BITS: {*params=8;} break;
   case GL_STENCIL_CLEAR_VALUE: {*params=glContext.clearStencil;} break;
@@ -1355,7 +1364,7 @@ void glGetIntegerv (GLenum pname, GLint *params) {
   case GL_TEXTURE_2D: {*params=glIsEnabled(GL_TEXTURE_2D);} break;
   case GL_TRANSPOSE_PROJECTION_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_PROJECTION&1][(i&3)*4+i/4];} break;
   case GL_TRANSPOSE_MODELVIEW_MATRIX: {for (i=0;i<16;i++) params[i]=glContext.matrixForMode[GL_MODELVIEW&1][(i&3)*4+i/4];} break;
-  case GL_VIEWPORT: {params[0]=glContext.viewportX0;params[1]=glContext.viewportY0;params[2]=glContext.viewportX1-glContext.viewportX0;params[3]=glContext.viewportY1-glContext.viewportY0;} break;
+  case GL_VIEWPORT: {params[0]=glContext.viewportX0;params[1]=glFrameBufferHeight-glContext.viewportY1;params[2]=glContext.viewportX1-glContext.viewportX0;params[3]=glContext.viewportY1-glContext.viewportY0;} break;
   case GL_ZOOM_X: {*params=(int)floor(glContext.zoomX);} break;
   case GL_ZOOM_Y: {*params=(int)floor(glContext.zoomY);;} break;
   }
@@ -2741,8 +2750,8 @@ void gluLookAt(GLfloat cx,GLfloat cy,GLfloat cz,GLfloat ox,GLfloat oy,GLfloat oz
 GLint gluProjectfx(GLfloat objX, GLfloat objY, GLfloat objZ, GLfloat *model, GLfloat *projection, GLint *view, GLfloat *winX, GLfloat *winY, GLfloat *winZ) {
   float d[3];
   const GLint r = glhProjectfx(objX, objY, objZ, model, projection, view, d);
-  *winX = d[0];
-  *winY = d[1];
+  *winX = d[0]+glPixelCenterX; // actually you need the pixelCenter?
+  *winY = d[1]-glPixelCenterY; // actually you need the pixelCenter?
   *winZ = d[2];
   return r;
 }
@@ -2750,14 +2759,16 @@ GLint gluProjectfx(GLfloat objX, GLfloat objY, GLfloat objZ, GLfloat *model, GLf
 GLint gluProjectf(GLfloat objX, GLfloat objY, GLfloat objZ, GLfloat *model, GLfloat *projection, GLint *view, GLfloat *winX, GLfloat *winY, GLfloat *winZ) {
   float d[3];
   const GLint r = glhProjectf(objX, objY, objZ, model, projection, view, d);
-  *winX = d[0];
-  *winY = d[1];
+  *winX = d[0]+glPixelCenterX; // actually you need the pixelCenter?
+  *winY = d[1]-glPixelCenterY; // actually you need the pixelCenter?
   *winZ = d[2];
   return r;
 }
 
 GLint gluUnProjectf(GLfloat winX, GLfloat winY, GLfloat winZ, GLfloat *model, GLfloat *projection, GLint *view, GLfloat *objX, GLfloat *objY, GLfloat *objZ) {
   float d[3];
+  winX -= glPixelCenterX; // actually you need the pixelCenter?
+  winY += glPixelCenterY; // actually you need the pixelCenter?
   const GLint r = glhUnProjectf(winX, winY, winZ, model, projection, view, d);
   *objX = d[0];
   *objY = d[1];
@@ -2768,8 +2779,8 @@ GLint gluUnProjectf(GLfloat winX, GLfloat winY, GLfloat winZ, GLfloat *model, GL
 GLint gluProjectx(GLdouble objX, GLdouble objY, GLdouble objZ, GLdouble *model, GLdouble *projection, GLint *view, GLdouble *winX, GLdouble *winY, GLdouble *winZ) {
   double d[3];
   const GLint r = glhProjectx(objX, objY, objZ, model, projection, view, d);
-  *winX = d[0];
-  *winY = d[1];
+  *winX = d[0]+glPixelCenterX; // actually you need the pixelCenter?
+  *winY = d[1]-glPixelCenterY; // actually you need the pixelCenter?
   *winZ = d[2];
   return r;
 }
@@ -2777,14 +2788,16 @@ GLint gluProjectx(GLdouble objX, GLdouble objY, GLdouble objZ, GLdouble *model, 
 GLint gluProject(GLdouble objX, GLdouble objY, GLdouble objZ, GLdouble *model, GLdouble *projection, GLint *view, GLdouble *winX, GLdouble *winY, GLdouble *winZ) {
   double d[3];
   const GLint r = glhProject(objX, objY, objZ, model, projection, view, d);
-  *winX = d[0];
-  *winY = d[1];
+  *winX = d[0]+glPixelCenterX; // actually you need the pixelCenter?
+  *winY = d[1]-glPixelCenterY; // actually you need the pixelCenter?
   *winZ = d[2];
   return r;
 }
 
 GLint gluUnProject(GLdouble winX, GLdouble winY, GLdouble winZ, GLdouble *model, GLdouble *projection, GLint *view, GLdouble *objX, GLdouble *objY, GLdouble *objZ) {
   double d[3];
+  winX -= glPixelCenterX; // actually you need the pixelCenter?
+  winY += glPixelCenterY; // actually you need the pixelCenter?
   const GLint r = glhUnProject(winX, winY, winZ, model, projection, view, d);
   *objX = d[0];
   *objY = d[1];
@@ -2929,7 +2942,7 @@ __inline bool glCheckDepthFunction(float depthBufferValue, float newValue, int d
 
 
 __inline int textureWrap(float tx, int siz, GLenum filterMode) {
-  int t = (int)floor(tx);
+  int t = (int)FLOOR(tx); // pseudo floor is a trunc directly below 0 makes a seam but is much faster
   if (t<siz&&t>=0) return t;
   switch(filterMode) {
   case GL_MIRRORED_REPEAT: {
@@ -3283,14 +3296,19 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
     tdata0 = t->data;
     texEnvMode = t->texEnvMode;
 
-    tx0 = v0->textureX*v0w*twidth0;
-    ty0 = v0->textureY*v0w*theight0;
+    double scx = glTexelCenterX;
+    double scy = glTexelCenterY;
+    if (!filtering) {scx = 0; scy = 0;}
+
+    tx0 = (v0->textureX*twidth0+scx)*v0w;
+    ty0 = ((1-v0->textureY)*theight0+scy)*v0w;
   
-    tx1 = v1->textureX*v1w*twidth0;
-    ty1 = v1->textureY*v1w*theight0;
-  
-    tx2 = v2->textureX*v2w*twidth0;
-    ty2 = v2->textureY*v2w*theight0;
+
+    tx1 = (v1->textureX*twidth0+scx)*v1w;
+    ty1 = ((1-v1->textureY)*theight0+scy)*v1w;
+
+    tx2 = (v2->textureX*twidth0+scx)*v2w;
+    ty2 = ((1-v2->textureY)*theight0+scy)*v2w;
 
     borderColor = ((int)floor(glClampf(t->borderColorRed*255.f,0.f,255.f)));
     borderColor |= ((int)floor(glClampf(t->borderColorGreen*255.f,0.f,255.f)))<<8;
@@ -3444,8 +3462,8 @@ void glDrawTriangle(_GLContext *context,glVertex *v0,glVertex *v1,glVertex *v2) 
             if (filtering) {
               int tix1 = textureWrap(tx+1, twidth0, t->wrapS);
               int tiy1 = textureWrap(ty+1, theight0, t->wrapT);
-              int txf = (int)floor(fmod(tx*256.f,256.f));
-              int tyf = (int)floor(fmod(ty*256.f,256.f));
+              int txf = (int)FLOOR(fmod(tx*256.f,256.f));
+              int tyf = (int)FLOOR(fmod(ty*256.f,256.f));
               if (txf<0) txf = 256+txf;
               if (tyf<0) tyf = 256+tyf;
               int p1v = ((256-txf)*(256-tyf))>>8; 

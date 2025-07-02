@@ -6,6 +6,7 @@
 // It is required that Vesa 3.0 e.g. 640x480x32 works on your device.
 // by Stefan Mader in 2025
 //-------------------------
+// Issues: In very rare cases (on 3d x or y==0) polygons may have seams
 #ifndef __gl_h__
 #define __gl_h__
 
@@ -687,6 +688,10 @@ GLAPI void APIENTRY glBlendEquation(GLenum mode); // :mad: // supported
 }
 #endif
 
+extern double glPixelCenterX; // -0.5 (screenX += glPixelCenterX)
+extern double glPixelCenterY; // -0.5
+extern double glTexelCenterX; // -0.5 (texCoord += glTexelCenterX)
+extern double glTexelCenterY; // -0.5
 extern int glFrameBufferWidth;
 extern int glFrameBufferHeight;
 extern double glMonitorAspectRatio;

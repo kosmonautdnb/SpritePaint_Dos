@@ -1078,7 +1078,7 @@ void quantizeAll() {
 }
 
 double round2(double v) {
-  return floor(v - 0.5);
+  return floor(v - 0.5); // so the mouse pointer is just near
 }
 
 void newWorkSpace() {
@@ -3470,7 +3470,7 @@ void displaySpriteSheet() {
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,ImVec2(0,0));
   ImGui::BeginChild("SheetConfig",ImVec2(90,55));
   ImGui::PushItemWidth(80);
-  ImGui::InputInt("Nr",&getCurrentSpriteSheet().xScroll);
+  ImGui::InputInt("##Nr2000",&getCurrentSpriteSheet().xScroll);
   getCurrentSpriteSheet().xScroll = clamp(getCurrentSpriteSheet().xScroll,0,(int)sprites.size()-1);
   if (ImGui::Button("Insert")) {
     sprites.spInsert(sprites,Sprite(),getCurrentSpriteCanvas().spriteNr);
@@ -3943,6 +3943,7 @@ void displayAbout() {
 #include "_map.cpp" // :cpp include:
 
 int main(int argc, char **argv) {
+  glFastTexturing = true;
   if (!initGraphics()) {
     printf("No Vesa Mode %dx%d with 32Bit found.\n",XRES,YRES);
     exit(0);

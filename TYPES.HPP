@@ -29,6 +29,10 @@ typedef unsigned int DWORD;
 typedef unsigned int UINT;
 #endif
 
+#if defined(__WATCOMC__) && (__WATCOMC__ < 1300)
+typedef int ssize_t;
+#endif
+
 #define INT8_MAX (0x7f)
 #define INT8_MIN (-0x80)
 #define INT16_MAX (0x7fff)
@@ -46,10 +50,13 @@ typedef unsigned int UINT;
 #define UINT64_MAX (0xffffffffffffffff)
 #define UINT64_MIN (0x0000000000000000)
 #define SIZE_MAX UINT32_MAX
+#define DOUBLE_MAX (1.79769E+306) // actually +308
+#define DOUBLE_MIN (-1.79769E+306) // actually +308
+#define DOUBLE_EPSILON (4.94065645841247E-306) // actually -324
 
 #ifndef NOT_DOS
-#define snprintf_x4(__a__,__b__,__c__,__d__) sprintf(__a__,__c__,__d__)
-#define snprintf_x5(__a__,__b__,__c__,__d__,__e__) sprintf(__a__,__c__,__d__,__e__)
+#define snprintf_x4(__a__,__b__,__c__,__d__) (sprintf(__a__,__c__,__d__) + (((char*)__a__)[(__b__)-1]=0))
+#define snprintf_x5(__a__,__b__,__c__,__d__,__e__) (sprintf(__a__,__c__,__d__,__e__) + (((char*)__a__)[(__b__)-1]=0))
 #else
 #define snprintf_x4(__a__,__b__,__c__,__d__) snprintf(__a__,__b__,__c__,__d__)
 #define snprintf_x5(__a__,__b__,__c__,__d__,__e__) snprintf(__a__,__b__,__c__,__d__,__e__)
@@ -69,6 +76,37 @@ __inline int mini(int a, int b) {return a<b?a:b;}
 __inline unsigned int minui(unsigned int a, unsigned int b) {return a<b?a:b;}
 __inline float minf(float a, float b) {return a<b?a:b;}
 __inline double mind(double a, double b) {return a<b?a:b;}
+__inline float lerpf(float a, float b, float c) {return (b-a)*c+a;}
+__inline double lerpd(double a, double b, double c) {return (b-a)*c+a;}
+__inline float halffloat(unsigned short f) { // not tested
+  int sign = (f>>15) & 1;
+  int exponent = (f>>10) & 0x1f;
+  int mantissa = f & 0x3ff;
+  unsigned int fsign = sign<<31;
+  unsigned int fexponent;
+  unsigned int fmantissa;
+  if (exponent==0) {
+    if(mantissa==0) {
+      fexponent = 0;
+      fmantissa = 0;
+    } else {
+      int msb=0;
+      for (int i = 0; i < 10; i++) if ((mantissa>>i)&1) msb = i;
+      fexponent = (127-14)-(9-msb);
+      fmantissa = (mantissa & ((1<<msb)-1))<<(23-msb);
+    }
+  } else {
+    if (exponent==31) {
+      fexponent=255<<23;
+      fmantissa=(mantissa==0)?0:(1<<22);
+    } else {
+      fexponent=(exponent-15+127)<<23;
+      fmantissa=mantissa<<(23-10);
+    }
+  }
+  unsigned int fbits = fsign|fexponent|fmantissa;
+  return *((float*)&fbits);
+}
 
 
 #endif //__TYPES_HPP__

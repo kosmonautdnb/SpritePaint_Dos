@@ -9,8 +9,12 @@
 #include <i86.h>
 #endif // __WATCOMC__
 #ifdef __DJGPP__
-// todo: not implemented, yet
+#include <sys/exceptn.h>
+#include <sys/stat.h>
 #include <dos.h>
+#include <unistd.h>
+#include <signal.h>
+#include <dirent.h>
 #endif // __DJGPP__
 #ifdef ON_WINDOWS
 #include <vector>
@@ -19,42 +23,62 @@
 #include <fileapi.h>
 #include <filesystem>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 #include <fcntl.h>
 
 String getCWD() {
-#ifndef NOT_DOS
-    String currentWorkingDirectory;
-  currentWorkingDirectory.resize(2048);
+#if defined(__WATCOMC__) || defined(__DJGPP__)
+  String currentWorkingDirectory; currentWorkingDirectory.resize(2048);
   getcwd(&(currentWorkingDirectory[0]),currentWorkingDirectory.length());
   currentWorkingDirectory.resize(strlen(currentWorkingDirectory.c_str()));
   return unixFileName(currentWorkingDirectory+"/");
-#endif
+#endif // defined(__WATCOM__) || defined(__DJGPP__)
+
 #ifdef ON_WINDOWS
  return unixFileName(String((std::filesystem::current_path().string().c_str())))+"/";
-#endif
+#endif // ON_WINDOWS
 }
 
 void disableControlBreak() {
-#ifndef NOT_DOS
+  // actually only disables CtrlC
+#ifdef __WATCOMC__
   union REGS regs;
   regs.h.ah = 0x33;
   regs.h.al = 1;
   regs.h.dl = 0;
   int386(0x21, &regs, &regs);
-#endif
+#endif // __WATCOMC__
+#ifdef __DJGPP__
+  setmode(fileno(stdin),O_BINARY); // CTRL-C is normal again
+#endif // __DJGPP__
 }
 
-int rtcRead(int reg) {
-#ifndef NOT_DOS
-  int volatile v=0;
-  for (int j=1; j < 100; j++) {v++;}
-  outp(0x70,reg & 0xff);
-  for (int i=1; i < 100; i++) {v++;}
-  return inp(0x71) & 0xff;
-#else
-  return 0;
-#endif
+#ifdef __WATCOMC__
+#pragma aux dosCLI="cli" modify[]
+#pragma aux dosSTI="sti" modify[]
+#endif // __WATCOMC__
+
+#ifdef __DJGPP__
+void dosCLI() {__asm__ __volatile__("cli");}
+void dosSTI() {__asm__ __volatile__("sti");}
+#endif // __DJGPP__
+
+unsigned char dosCmosRead(unsigned char reg, bool maskNMI) {
+  dosCLI();
+  outp(0x70, reg | (maskNMI?0x80:00));
+  unsigned char r = (unsigned char)inp(0x71);
+  dosSTI();
+  return r;
+}
+
+unsigned char dosCmosUpdateInProgress() {
+  return (unsigned char)(dosCmosRead(0x0a, true) & 0x80);
+}
+
+int rtcRead(unsigned char reg) {
+  while(dosCmosUpdateInProgress()) {;}
+  return (int)dosCmosRead(reg, true);
 }
 
 static String hex(int v) {
@@ -77,8 +101,8 @@ String currentTimeString() {
   return hex(rtc_day)+"."+hex(rtc_month)+"."+hex(rtc_year)+" "+hex(rtc_hours)+":"+hex(rtc_minutes)+"."+hex(rtc_seconds);
 }
 
-static short _dosGetFileDate(const String &filePath) {
-#ifndef NOT_DOS
+static unsigned short _dosGetFileDate(const String &filePath) {
+#if defined(__WATCOMC__) || defined(__DJGPP__)
   int handle = open(filePath.c_str(),O_RDONLY | O_TEXT);
   union REGS r;
   r.h.ah = 0x57;
@@ -87,13 +111,21 @@ static short _dosGetFileDate(const String &filePath) {
   int386(0x21,&r,&r);
   close(handle);
   return r.w.dx;
-#else
+#endif // __WATCOMC__
+//#ifdef __DJGPP__
+//  struct stat buf;
+//  if (stat(filePath.c_str(), &buf) == 0) {
+//    return (buf.st_mtime>>16) & 0xffff; // todo: test this
+//  } else 
+//    return 0;
+//#endif // __DJGPP__
+#ifdef ON_WINDOWS
     return 0;
-#endif
+#endif // ON_WINDOWS
 }
 
-static short _dosGetFileTime(const String &filePath) {
-#ifndef NOT_DOS
+static unsigned short _dosGetFileTime(const String &filePath) {
+#if defined(__WATCOMC__) || defined(__DJGPP__)
     int handle = open(filePath.c_str(),O_RDONLY | O_TEXT);
   union REGS r;
   r.h.ah = 0x57;
@@ -102,9 +134,31 @@ static short _dosGetFileTime(const String &filePath) {
   int386(0x21,&r,&r);
   close(handle);
   return r.w.cx;
-#else
+#endif // __WATCOMC__
+//#ifdef __DJGPP__
+//  struct stat buf;
+//  if (stat(filePath.c_str(), &buf) == 0) {
+//    return (buf.st_mtime) & 0xffff; // todo: test this
+//  } else 
+//    return 0;
+//#endif // __DJGPP__
+#ifdef ON_WINDOWS
     return 0;
-#endif
+#endif // ON_WINDOWS
+
+}
+
+static unsigned int _dosGetFileSize(const String &filePath) {
+#ifdef __DJGPP__
+  struct stat buf;
+  if (stat(filePath.c_str(), &buf) == 0) return buf.st_size;
+#endif // __DJGPP__
+  FILE *in = fopen(filePath.c_str(),"rb");
+  if (in == NULL) return 0;
+  fseek(in,0,SEEK_END);
+  int s = ftell(in);
+  fclose(in);
+  return s;
 }
 
 static FileTime toFileTime(int date, int time) {
@@ -141,7 +195,7 @@ bool operator<(const FileTime &a, const FileTime &b) {
 }
 
 Array<File> dosGetFiles(const String &filePath) {
-#ifndef NOT_DOS
+#ifdef __WATCOMC__
   Array<File> ret;
   DIR *dirp;
   struct dirent *direntp;
@@ -161,7 +215,28 @@ Array<File> dosGetFiles(const String &filePath) {
     closedir( dirp );
   }
   return ret;
-#endif
+#endif // __WATCOMC__
+#ifdef __DJGPP__
+  Array<File> ret;
+  DIR *dirp;
+  struct dirent *direntp;
+  dirp = opendir( dosFileName(filePath).c_str() );
+  if( dirp != NULL ) {
+    do {
+      direntp = readdir( dirp );
+      if( direntp == NULL )
+        break;
+      File r;
+      r.name = toFileName(filePath,direntp->d_name);
+      r.size = _dosGetFileSize(r.name.full);
+      r.date = toFileTime(_dosGetFileDate(r.name.full),_dosGetFileTime(r.name.full));
+      r.attributes = direntp->d_type == DT_DIR ? DOS_ATTR_SUBDIR : 0;
+      ret.push_back(r);
+    } while(1==1);
+    closedir( dirp );
+  }
+  return ret;
+#endif // __DJGPP__
 #ifdef ON_WINDOWS
   Array<File> ret;
   std::string path = filePath.c_str();
@@ -190,17 +265,17 @@ Array<File> dosGetFiles(const String &filePath) {
     ret.push_back(r);
   }
   return ret;
-#endif
+#endif // ON_WINDOWS
 }
 
 FileTime dosGetFileTime(const String &filePath) {
-#ifndef NOT_DOS
+#if defined(__WATCOMC__) || defined(__DJGPP__)
   FileTime r;
   short date = _dosGetFileDate(filePath);
   short time = _dosGetFileTime(filePath);
   r = toFileTime(date,time);
   return r;
-#endif
+#endif // defined(__WATCOMC__) || defined(__DJGPP__)
 #ifdef ON_WINDOWS
   FileTime r;
   struct stat filestat;
@@ -218,12 +293,12 @@ FileTime dosGetFileTime(const String &filePath) {
       }
   }
   return r;
-#endif
+#endif // ON_WINDOWS
 }
 
 bool dosHasDrive(const char driveLetter) {
-#ifndef NOT_DOS
-    int d = -1;
+#if defined(__WATCOMC__) || defined(__DJGPP__)
+  int d = -1;
   if (driveLetter >= 'A' && driveLetter <= 'Z') d = driveLetter - 'A' + 1;
   if (driveLetter >= 'a' && driveLetter <= 'z') d = driveLetter - 'a' + 1;
   if (d < 0) return false;
@@ -234,7 +309,7 @@ bool dosHasDrive(const char driveLetter) {
   r.h.bl = d & 255;
   int386(0x21,&r,&r);
   return (r.w.ax==0x00)||(r.w.ax==0x01);
-#endif
+#endif // defined(__WATCOMC__) || defined(__DJGPP__)
 #ifdef ON_WINDOWS
   std::vector<std::string> arrayOfDrives;
   wchar_t* szDrives = new wchar_t[MAX_PATH]();
@@ -250,9 +325,10 @@ bool dosHasDrive(const char driveLetter) {
   }
   delete[] szDrives;
   return false;
-#endif
+#endif // ON_WINDOWS
 }
 
+#ifdef __WATCOMC__
 void dosCreateFolder(const String &folderName) {
   mkdir(dosFileName(folderName).c_str());
 }
@@ -268,6 +344,40 @@ void dosRemoveFile(const String &fileName) {
 void dosRenameFile(const String &oldFileName, const String &newFileName) {
   rename(dosFileName(oldFileName).c_str(), dosFileName(newFileName).c_str());
 }
+#endif // __WATCOMC__
+
+#ifdef __DJGPP__
+void dosCreateFolder(const String &folderName) {
+  mkdir(dosFileName(folderName).c_str(),S_IRWXU|S_IRWXG|S_IRWXO);
+}
+
+void dosDeleteFolder(const String &folderName) {
+  rmdir(dosFileName(folderName).c_str());
+}
+
+void dosRemoveFile(const String &fileName) {
+  remove(dosFileName(fileName).c_str());
+}
+
+void dosRenameFile(const String &oldFileName, const String &newFileName) {
+  rename(dosFileName(oldFileName).c_str(), dosFileName(newFileName).c_str());
+}
+#endif // __DJGPP__
+
+
+#ifdef ON_WINDOWS
+void dosCreateFolder(const String &folderName) {
+}
+
+void dosDeleteFolder(const String &folderName) {
+}
+
+void dosRemoveFile(const String &fileName) {
+}
+
+void dosRenameFile(const String &oldFileName, const String &newFileName) {
+}
+#endif // ON_WINDOWS
 
 String unixFileName(const String &filePath) {
   String r = String(filePath);
@@ -303,7 +413,7 @@ String getExtension(const String &fileName) {
   return fileName.substr(fileName.findLast("."));
 }
 
-#ifndef NOT_DOS // {--
+#ifdef __WATCOMC__
 
 // long file name extensions (maybe you need doslfn.com)
 //---------
@@ -727,4 +837,4 @@ uint16_t dosInt386x(uint32_t intno, REGS16 *in, REGS16 *out) {
   out->cflag = (rmregs.flags & 0x01) ? true : false;
   return out->ax;
 }
-#endif // NOT_DOS --}
+#endif // __WATCOMC__
